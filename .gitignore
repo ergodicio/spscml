@@ -1,0 +1,11 @@
+**/*.DS_Store
+
+# Latex garbage
+**/*.bbl*
+**/*.bcf*
+**/*.blg
+**/*.fls
+**/*.fdb_latexmk
+**/*.run.xml
+**/*.log
+**/*.aux
