@@ -115,9 +115,14 @@ class Solver():
             axis = 1
 
         if axis == 0:
-            left = bc['left'](f[0:2, :])
-            right = bc['right'](f[-2:, :])
+            if bc == 'periodic':
+                left = f[-2:, :]
+                right = f[:2, :]
+            else:
+                left = bc['left'](f[0:2, :])
+                right = bc['right'](f[-2:, :])
         elif axis == 1:
+            if bc == 'periodic
             left = bc['left'](f[:, 0:2])
             right = bc['right'](f[:, -2:])
 

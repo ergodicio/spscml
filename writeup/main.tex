@@ -113,7 +113,24 @@ The boundary conditions on $K_j$ are the projection of the full distribution fun
         \item A similar numerical flux can be applied for the $E \partial_v f$ terms.
     \end{itemize}
 }
-\jack{}.
+
+
+
+\section{Circuit model}
+
+Series RLC circuit equations for a discharging capacitor.
+Let $Q$ be the charge in the capacitor, $C$ the capacitance, $R$ the resistance,
+and $L$ the inductance.
+The circuit current is $I = \dot{Q}$, the rate of change of the charge.
+The voltages of each component are related by
+\begin{align}
+V_R + V_L + V_C + V_p = 0,
+\end{align}
+where $V_p$ is the voltage drop across the plasma, and $V_R, V_L, V_C$ are the voltage drops across the resistor, inductor, and capacitor respectively.
+From the definition of capacitance we have $V_C = Q/C$. From Ohm's law we have $V_R = IR = \dot{Q} R$, 
+and $V_L = \dot{I} L = \ddot{Q} L$.
+
+
 
 \printbibliography
 
