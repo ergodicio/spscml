@@ -57,6 +57,14 @@ class Solver(eqx.Module):
         return jnp.sum(f, axis=1) * grid.dv
 
 
+    def rho_c(self, fs):
+        fe = fs['electron']
+        fi = fs['ion']
+        rho_c = self.plasma.Ze * self.n(fe, self.grids['electron']) + \
+                self.plasma.Zi * self.n(fi, self.grids['ion'])
+        return rho_c
+
+
     def poisson_solve(self, rho_c, boundary_conditions):
         """
         Solves the Poisson equation nabla^2 phi = -omega_c_tau / omega_p_tau^2 * rho_c.
@@ -101,24 +109,23 @@ class Solver(eqx.Module):
         elif left_bc_type == 'Robin' and right_bc_type == 'Dirichlet':
             L = grid.robin_dirichlet_laplacian(left_bc['alpha'], left_bc['beta'])
             phi = jnp.linalg.solve(L, rhs)
-            # beta*phiL + alpha*(phi[2] - phi[1])/dx = robin_val
-            #phiL = left_bc['val'] - left_bc['alpha'] * dx / (phi[1] - phi[0])
-            #phi = phi.at[0]
 
         elif left_bc_type == 'Dirichlet' and right_bc_type == 'Robin':
-            L = grid.dirichlet_robin_laplacian(right_bc['alpha'], left_bc['beta'])
+            L = grid.dirichlet_robin_laplacian(right_bc['alpha'], right_bc['beta'])
             phi = jnp.linalg.solve(L, rhs)
+            phiR = (right_bc['val'] + phi[-1] * right_bc['alpha'] / dx) / robin_coef
+            phi = jnp.concatenate([
+                jnp.array([left_bc['val']]),
+                phi,
+                jnp.array([phiR])
+                ])
 
         E = -(phi[2:] - phi[:-2]) / (2*dx)
         return E
 
 
     def poisson_solve_from_fs(self, fs, boundary_conditions):
-        fe = fs['electron']
-        fi = fs['ion']
-        rho_c = self.plasma.Ze * self.n(fe, self.grids['electron']) + \
-                self.plasma.Zi * self.n(fi, self.grids['ion'])
-        E = self.poisson_solve(rho_c, boundary_conditions)
+        E = self.poisson_solve(self.rho_c(fs), boundary_conditions)
         return E
 
 

@@ -21,7 +21,7 @@ vti = jnp.sqrt(Ti / Ai)
 
 plasma = TwoSpeciesPlasma(1.0, 1.0, 0.0, Ai, Ae, 1.0, -1.0)
 
-x_grid = Grid(100, 20)
+x_grid = Grid(500, 200)
 ion_grid = x_grid.extend_to_phase_space(6*vti, 50)
 electron_grid = x_grid.extend_to_phase_space(6*vte, 50)
 
@@ -39,7 +39,7 @@ boundary_conditions = {
     'electron': {
         'x': {
             'left': left_electron_absorbing_wall,
-            'right': lambda f_in: initial_conditions['electron'](*electron_grid.xv)[:2, :],
+            'right': right_electron_absorbing_wall,
         },
         'v': {
             'left': jnp.zeros_like,
@@ -49,7 +49,7 @@ boundary_conditions = {
     'ion': {
         'x': {
             'left': left_ion_absorbing_wall,
-            'right': lambda f_in: initial_conditions['ion'](*ion_grid.xv)[:2, :],
+            'right': right_electron_absorbing_wall,
         },
         'v': {
             'left': jnp.zeros_like,
@@ -62,10 +62,8 @@ boundary_conditions = {
             'val': 0.0
         },
         'right': {
-            'type': 'Robin',
-            'alpha': 200,
-            'beta': 1.0,
-            'val': lambda: 1.0
+            'type': 'Dirichlet',
+            'val': 0.0
         },
     }
 }
@@ -73,7 +71,7 @@ boundary_conditions = {
 solver = Solver(plasma, 
                 {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid})
 
-solve = jax.jit(lambda: solver.solve(0.1, 3000, initial_conditions, boundary_conditions))
+solve = jax.jit(lambda: solver.solve(0.1, 1000, initial_conditions, boundary_conditions))
 result = solve()
 
 E = solver.poisson_solve_from_fs(result, boundary_conditions)
