@@ -1,6 +1,7 @@
 import equinox as eqx
 import numpy as np
 import jax.numpy as jnp
+import equinox as eqx
 
 
 class PhaseSpaceGrid():
@@ -12,14 +13,28 @@ class PhaseSpaceGrid():
 
         dx = Lx / Nx
         self.dx = dx
-        self.dv = 2*vmax / Nv
+        dv = 2*vmax / Nv
+        self.dv = dv
 
         self.xs = jnp.linspace(-Lx/2 + dx/2, Lx/2 - dx/2, Nx)
         self.vs = jnp.linspace(-vmax + dv/2, vmax - dv/2, Nv)
 
-        self.xv = jnp.meshgrid(xs, vs, indexing='ij')
+        self.vT = jnp.atleast_2d(self.vs)
+
+        self.xv = jnp.meshgrid(self.xs, self.vs, indexing='ij')
 
         self.laplacian = laplacian(Nx, dx)
+
+
+    def dirichlet_robin_laplacian(self, robin_alpha, robin_beta):
+        robin_coef = robin_alpha / self.dx + robin_beta
+        return self.laplacian.at[-1, -1].add(robin_alpha / (self.dx * robin_coef) / self.dx**2)
+
+
+    def robin_dirichlet_laplacian(self, robin_alpha, robin_beta):
+        robin_coef = -robin_alpha / self.dx + robin_beta
+        return self.laplacian.at[0, 0].add(-robin_alpha / (self.dx * robin_coef) / self.dx**2)
+
 
 
 class Grid():
@@ -34,6 +49,10 @@ class Grid():
         self.laplacian = laplacian(Nx, dx)
 
 
+    def extend_to_phase_space(self, vmax, Nv):
+        return PhaseSpaceGrid(self.Lx, vmax, self.Nx, Nv)
+
+
 def laplacian(Nx, dx):
     L = np.zeros((Nx, Nx))
     for i in range(Nx):
@@ -42,5 +61,5 @@ def laplacian(Nx, dx):
             L[i-1, i] = 1
             L[i, i-1] = 1
 
-    L = jnp.array(L) / (self.dx**2)
+    L = jnp.array(L) / (dx**2)
     return L
