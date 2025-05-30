@@ -65,7 +65,7 @@ boundary_conditions = {
             'type': 'Robin',
             'alpha': 200,
             'beta': 1.0,
-            'val': lambda: 1.0
+            'val': 1.0
         },
     }
 }

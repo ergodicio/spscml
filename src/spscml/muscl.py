@@ -18,7 +18,7 @@ def minmod3(a, b, c):
 # Port of Script 10.10 from Hesthaven "Numerical Methods for Conservation Laws", 2018
 def slope_limiter(a, b, limiter_type):
     if limiter_type == 'minmod':
-        return minmod(a, b)
+        return minmod2(a, b)
     elif limiter_type == 'MUSCL':
         return minmod3(0.5*(a+b), 2*a, 2*b)
     elif limiter_type == 'vanLeer':
@@ -81,11 +81,11 @@ def slope_limited_flux_divergence(cell_averages, slope_limiter, numerical_flux, 
     right_vals = face_vals['right']
 
     if axis == 0:
-        right_face_vals = left_vals[1:, :]
-        left_face_vals = right_vals[:-1, :]
+        right_face_vals = left_vals[1:, ...]
+        left_face_vals = right_vals[:-1, ...]
     elif axis == 1:
-        right_face_vals = left_vals[:, 1:]
-        left_face_vals = right_vals[:, :-1]
+        right_face_vals = left_vals[:, 1:, ...]
+        left_face_vals = right_vals[:, :-1, ...]
 
     F = numerical_flux(left_face_vals, right_face_vals)
     return jnp.diff(F, axis=axis) / dx

@@ -9,19 +9,24 @@ from ..plasma import TwoSpeciesPlasma
 from ..grids import PhaseSpaceGrid
 from ..rk import ssprk2
 from ..muscl import slope_limited_flux_divergence
+from ..poisson import poisson_solve
+from ..utils import zeroth_moment, first_moment
 
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
     grids: PyTree = eqx.field(static=True)
+    flux_source_enabled: bool
 
     """
     Solves the Vlasov-Fokker-Planck equation
     """
     def __init__(self,
                  plasma: TwoSpeciesPlasma, 
-                 grids):
+                 grids,
+                 flux_source_enabled):
         self.plasma = plasma
         self.grids = grids
+        self.flux_source_enabled = flux_source_enabled
 
 
     def max_dt(self):
@@ -33,8 +38,8 @@ class Solver(eqx.Module):
         return jnp.minimum(omega_pe_limit, free_streaming_limit)
 
 
-    def step(self, fs, dt, bcs):
-        return ssprk2(fs, lambda f: self.vlasov_fp_rhs(f, bcs), dt)
+    def step(self, fs, dt, bcs, f0):
+        return ssprk2(fs, lambda f: self.vlasov_fp_rhs(f, bcs, f0), dt)
 
 
     def solve(self, dt, Nt, initial_conditions, boundary_conditions):
@@ -48,7 +53,7 @@ class Solver(eqx.Module):
         f = f0
 
         def one_step(i, f):
-            return self.step(f, dt, boundary_conditions)
+            return self.step(f, dt, boundary_conditions, f0)
 
         return jax.lax.fori_loop(0, Nt, one_step, f0)
 
@@ -65,71 +70,12 @@ class Solver(eqx.Module):
         return rho_c
 
 
-    def poisson_solve(self, rho_c, boundary_conditions):
-        """
-        Solves the Poisson equation nabla^2 phi = -omega_c_tau / omega_p_tau^2 * rho_c.
-
-        Returns E = -nabla phi
-        """
-        oct = self.plasma.omega_c_tau
-        opt = self.plasma.omega_p_tau
-        rhs = -oct / opt**2 * rho_c
-
-        grid = self.grids['x']
-        
-        left_bc = boundary_conditions['phi']['left']
-        right_bc = boundary_conditions['phi']['right']
-        left_bc_type = left_bc['type']
-        right_bc_type = right_bc['type']
-
-        dx = grid.dx
-
-        # Apply phi boundary conditions
-        if left_bc_type == 'Dirichlet':
-            rhs = rhs.at[0].add(-left_bc['val'] / dx**2)
-        elif left_bc_type == 'Robin':
-            robin_coef = -left_bc['alpha'] / dx + left_bc['beta']
-            rhs = rhs.at[0].subtract(1 / dx**2 * left_bc['val'] / robin_coef)
-
-        if right_bc_type == 'Dirichlet':
-            rhs = rhs.at[-1].add(-right_bc['val'] / dx**2)
-        elif right_bc_type == 'Robin':
-            robin_coef = right_bc['alpha'] / dx + right_bc['beta']
-            rhs = rhs.at[-1].subtract(1 / dx**2 * right_bc['val'] / robin_coef)
-
-        if left_bc_type == 'Dirichlet' and right_bc_type == 'Dirichlet':
-            L = grid.laplacian
-            phi = jnp.linalg.solve(L, rhs)
-            phi = jnp.concatenate([
-                jnp.array([left_bc['val']]),
-                phi,
-                jnp.array([right_bc['val']])
-                ])
-
-        elif left_bc_type == 'Robin' and right_bc_type == 'Dirichlet':
-            L = grid.robin_dirichlet_laplacian(left_bc['alpha'], left_bc['beta'])
-            phi = jnp.linalg.solve(L, rhs)
-
-        elif left_bc_type == 'Dirichlet' and right_bc_type == 'Robin':
-            L = grid.dirichlet_robin_laplacian(right_bc['alpha'], right_bc['beta'])
-            phi = jnp.linalg.solve(L, rhs)
-            phiR = (right_bc['val'] + phi[-1] * right_bc['alpha'] / dx) / robin_coef
-            phi = jnp.concatenate([
-                jnp.array([left_bc['val']]),
-                phi,
-                jnp.array([phiR])
-                ])
-
-        E = -(phi[2:] - phi[:-2]) / (2*dx)
-        return E
-
-
     def poisson_solve_from_fs(self, fs, boundary_conditions):
-        E = self.poisson_solve(self.rho_c(fs), boundary_conditions)
+        E = poisson_solve(self.grids['x'], self.plasma, self.rho_c(fs), boundary_conditions)
         return E
 
 
-    def vlasov_fp_rhs(self, fs, boundary_conditions):
+    def vlasov_fp_rhs(self, fs, boundary_conditions, f0):
         fe = fs['electron']
         fi = fs['ion']
         E = self.poisson_solve_from_fs(fs, boundary_conditions)
@@ -140,6 +86,30 @@ class Solver(eqx.Module):
         ion_rhs = self.vlasov_fp_single_species_rhs(fi, E, self.plasma.Ai, self.plasma.Zi, 
                                                          self.grids['ion'],
                                                          boundary_conditions['ion'])
+
+        if self.flux_source_enabled:
+            ion_particle_flux = first_moment(fi, self.grids['ion'])
+            total_ion_wall_flux = -ion_particle_flux[0] + ion_particle_flux[-1]
+
+            grid = self.grids['x']
+            L_flux_source = grid.Lx / 4
+            flux_source_weight = jnp.where(jnp.abs(grid.xs) < L_flux_source, 
+                                           1 / L_flux_source - jnp.abs(grid.xs) / L_flux_source**2,
+                                           0.0)
+            flux_source_weight = jnp.expand_dims(flux_source_weight, axis=1)
+            fe0 = jnp.expand_dims(f0['electron'][self.grids['x'].Nx // 2, :], axis=0)
+            fi0 = jnp.expand_dims(f0['ion'][self.grids['x'].Nx // 2, :], axis=0)
+
+            electron_rhs = electron_rhs + total_ion_wall_flux * flux_source_weight * fe0
+            ion_rhs = ion_rhs + total_ion_wall_flux * flux_source_weight * fi0
+
+        # Implement dumb electron drag term
+        Ne = jnp.expand_dims(zeroth_moment(fe, self.grids['electron']), axis=1)
+        ve = self.grids['electron'].vT
+        Ae = self.plasma.Ae
+        electron_stationary_maxwellian = Ne / jnp.sqrt(2*jnp.pi * 1 / Ae) * jnp.exp(-Ae*(ve**2) / (2))
+        nu_ei = 0.1
+        electron_rhs = electron_rhs + nu_ei * (electron_stationary_maxwellian - fe)
 
         # TODO: implement cross-species collision term
 
@@ -152,7 +122,7 @@ class Solver(eqx.Module):
 
         v = jnp.expand_dims(grid.vs, axis=0)
         F = lambda left, right: jnp.where(v > 0, left * v, right * v)
-        vdfdx = slope_limited_flux_divergence(f_bc_x, 'MUSCL', F, grid.dx, axis=0)
+        vdfdx = slope_limited_flux_divergence(f_bc_x, 'minmod', F, grid.dx, axis=0)
 
         # electrostatic acceleration term
         f_bc_v = self.apply_bcs(f, bcs, 'v')
@@ -160,7 +130,7 @@ class Solver(eqx.Module):
         E = jnp.expand_dims(E, axis=1)
         fac = self.plasma.omega_c_tau * Z / A
         F = lambda left, right: jnp.where(fac * E > 0, left * fac * E, right * fac * E)
-        Edfdv = slope_limited_flux_divergence(f_bc_v, 'MUSCL', F, grid.dv, axis=1)
+        Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', F, grid.dv, axis=1)
 
         # TODO: implement Fokker-Planck operator
 

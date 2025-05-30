@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from spscml.fulltensor_vfp.solver import Solver
 from spscml.plasma import TwoSpeciesPlasma
 from spscml.grids import Grid, PhaseSpaceGrid
-
+from spscml.utils import zeroth_moment, first_moment
 
 Te = 1.0
 Ti = 1.0
@@ -21,7 +21,7 @@ vti = jnp.sqrt(Ti / Ai)
 
 plasma = TwoSpeciesPlasma(1.0, 1.0, 0.0, Ai, Ae, 1.0, -1.0)
 
-x_grid = Grid(500, 200)
+x_grid = Grid(400, 200)
 ion_grid = x_grid.extend_to_phase_space(6*vti, 50)
 electron_grid = x_grid.extend_to_phase_space(6*vte, 50)
 
@@ -63,22 +63,36 @@ boundary_conditions = {
         },
         'right': {
             'type': 'Dirichlet',
-            'val': 0.0
+            'val': 0.3
         },
     }
 }
 
 solver = Solver(plasma, 
-                {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid})
+                {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid},
+                flux_source_enabled=True)
 
-solve = jax.jit(lambda: solver.solve(0.1, 1000, initial_conditions, boundary_conditions))
+solve = jax.jit(lambda: solver.solve(0.1, 4000, initial_conditions, boundary_conditions))
 result = solve()
 
 E = solver.poisson_solve_from_fs(result, boundary_conditions)
 
 fig, axes = plt.subplots(3, 1, figsize=(10, 8))
 
-axes[0].imshow(result['electron'].T)
-axes[1].imshow(result['ion'].T)
+fe = result['electron']
+fi = result['ion']
+
+je = -1 * first_moment(fe, electron_grid)
+ji = 1 * first_moment(fi, ion_grid)
+
+axes[0].plot(-je)
+axes[0].plot(ji)
+axes[0].plot(je+ji)
+
+ne = zeroth_moment(fe, electron_grid)
+ni = zeroth_moment(fi, ion_grid)
+axes[1].plot(ne)
+axes[1].plot(ni)
+
 axes[2].plot(E)
 plt.show()
