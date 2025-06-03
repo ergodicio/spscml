@@ -18,7 +18,7 @@ def calculate_plasma_current(V_total):
 
     plasma = TwoSpeciesPlasma(1.0, 1.0, 0.0, Ai, Ae, 1.0, -1.0)
 
-    x_grid = Grid(400, 200)
+    x_grid = Grid(200, 100)
     ion_grid = x_grid.extend_to_phase_space(6*vti, 50)
     electron_grid = x_grid.extend_to_phase_space(6*vte, 50)
 
@@ -51,7 +51,7 @@ def calculate_plasma_current(V_total):
                     {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid},
                     flux_source_enabled=True)
 
-    solve = jax.jit(lambda: solver.solve(0.1, 2000, initial_conditions, boundary_conditions))
+    solve = jax.jit(lambda: solver.solve(0.1, 1000, initial_conditions, boundary_conditions))
     result = solve()
     je = -1 * first_moment(result['electron'], electron_grid)
     ji = 1 * first_moment(result['ion'], ion_grid)

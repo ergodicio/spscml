@@ -63,7 +63,7 @@ boundary_conditions = {
         },
         'right': {
             'type': 'Dirichlet',
-            'val': 0.3
+            'val': 4.3
         },
     }
 }
@@ -82,6 +82,12 @@ fig, axes = plt.subplots(3, 1, figsize=(10, 8))
 fe = result['electron']
 fi = result['ion']
 
+Se = jnp.linalg.svd(fe, compute_uv=False)
+Si = jnp.linalg.svd(fi, compute_uv=False)
+
+print("Se: ", Se / Se[0])
+print("Si: ", Si / Si[0])
+
 je = -1 * first_moment(fe, electron_grid)
 ji = 1 * first_moment(fi, ion_grid)
 
@@ -91,8 +97,11 @@ axes[0].plot(je+ji)
 
 ne = zeroth_moment(fe, electron_grid)
 ni = zeroth_moment(fi, ion_grid)
-axes[1].plot(ne)
-axes[1].plot(ni)
+#axes[1].plot(ne)
+#axes[1].plot(ni)
 
-axes[2].plot(E)
+axes[1].imshow(fe.T)
+axes[2].imshow(fi.T)
+
+
 plt.show()
