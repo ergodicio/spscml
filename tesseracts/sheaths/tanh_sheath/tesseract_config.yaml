@@ -1,0 +1,6 @@
+name: "tanh_sheath"
+version: "0.1.0"
+
+build_config:
+  base_image: "python:3.10-slim-bookworm"
+

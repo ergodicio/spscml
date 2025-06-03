@@ -1,0 +1,6 @@
+{
+    "inputs": {"N": 0.1, "T": 2e3, "Vp": 2e3 }, 
+    "vjp_inputs": ["Vp"], 
+    "vjp_outputs": ["Ip"], 
+    "cotangent_vector": {"Ip": 0.8}
+}
