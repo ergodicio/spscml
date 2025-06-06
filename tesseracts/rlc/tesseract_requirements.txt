@@ -1,3 +1,0 @@
-../../../spscml_dlr
-tesseract_jax
-equinox

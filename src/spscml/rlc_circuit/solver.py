@@ -2,12 +2,10 @@ import jax.numpy as jnp
 import jax
 import jpu
 
-from ..plasma import TwoSpeciesPlasma
 from ..grids import PhaseSpaceGrid
-from ..fulltensor_vfp.sheath_model import calculate_plasma_current
 
 class Solver():
-    def __init__(self, plasma, R, L, C, Lp, V0, Lz, N):
+    def __init__(self, R, L, C, Lp, V0, Lz, N):
         '''
         params:
             R: The circuit resistance [ohms]
@@ -18,7 +16,6 @@ class Solver():
             Lz: The inter-electrode length [meters]
             N: The plasma linear density [meters^-1]
         '''
-        self.plasma = plasma
         self.R = R
         self.L = L
         self.C = C
@@ -44,13 +41,14 @@ class Solver():
                 - n0 is the initial volumetric density [meters^-3]
             sheath_solve: a Callable that accepts (V, N, T), where
                 - V is the plasma gap voltage [volts]
-                - N is the plasma linear density [meters^-1]
                 - T is the plasma temperature [eV]
+                and returns the plasma current in amperes
         '''
 
         @jax.jit
         def scanner(carry, ys):
             y, Vp, t = carry
+            jax.debug.print("y: {}", y)
             assert len(y) == 4
             Q, I, T, n = y
             Q_I = jnp.array([Q, I])
@@ -89,7 +87,7 @@ class Solver():
 
         def residual(y):
             Qnext, Vpnext = y
-            Ip = sheath_solve(Vpnext, self.N, T)["Ip"]
+            Ip = sheath_solve(Vpnext, T)
             factor = self.Lp / (self.L - self.Lp)
             V_Rp = (1 - factor) * (Vpnext - factor * (-Qnext / self.C - self.R * Ip))
             r = jnp.array([
@@ -110,7 +108,7 @@ class Solver():
             guess = guess + step
 
         Q, V = guess
-        Ip = sheath_solve(V, self.N, T)["Ip"]
+        Ip = sheath_solve(V, T)
         return jnp.array([Q, Ip]), V
 
 

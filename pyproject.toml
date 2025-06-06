@@ -8,6 +8,7 @@ dependencies = [
     "equinox>=0.12.2",
     "jax>=0.6.0",
     "jpu>=0.0.5",
+    "mlflow>=2.22.1",
 ]
 
 [dependency-groups]
