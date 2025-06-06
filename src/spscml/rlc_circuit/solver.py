@@ -55,6 +55,7 @@ class Solver():
             Q_I_new, Vnew = self.implicit_euler_step(Q_I, Vp, T, dt, sheath_solve)
             I_new = Q_I_new[1]
             T_prime = self.step_heating_and_cooling(I_new, T, n, dt)
+            #T_prime = T
 
             T_new = (I_new / I)**2 * T
             n_new = (T_new / T_prime)**(3/2) * n
@@ -135,5 +136,5 @@ class Solver():
         P_br = (1.06e-19 * n.magnitude**2 * T.magnitude**0.5) * (ureg.eV / ureg.s / ureg.m**3)
         dT_rad = (P_br / n).to(ureg.eV / ureg.s)
 
-        T_prime = (T + dt * ureg.s * (dT_eta + dT_rad)).to(ureg.eV).magnitude
+        T_prime = (T + dt * ureg.s * (dT_eta - dT_rad)).to(ureg.eV).magnitude
         return T_prime

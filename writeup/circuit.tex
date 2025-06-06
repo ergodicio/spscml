@@ -181,7 +181,7 @@ radial force balance much faster than a single timestep.
 Resistive heating of a plasma follows a volumetric analogue to Ohm's law.
 Heating per unit volume is given by
 \begin{align*}
-    P_{\eta,vol} = \eta j^2,
+    P_{\eta} = \eta j^2,
 \end{align*}
 where $\eta$ can be estimated by the (corrected) Spitzer resistivity \cite{goldstonIntroductionPlasmaPhysics1995a}
 \begin{align*}
@@ -193,9 +193,9 @@ j = \frac{I}{\pi a^2},
 \end{align*}
 where $a = \sqrt{N / \pi n}$ is the pinch radius.
 
-Multiplying by the volume of the pinch, we get
+Dividing by the volumetric density, we get
 \begin{align*}
-    \left( \frac{dT}{dt} \right)_\eta = L \pi a^2 P_{\eta,vol} = L \pi a^2 \eta j^2 = \frac{L \eta I^2}{\pi a^2} = \frac{L \eta I^2 n}{N}
+    \left( \frac{dT}{dt} \right)_\eta = \frac{P_{\eta}}{n} = \frac{\eta j^2}{n}.
 \end{align*}
 
 \subsection{Radiative losses}
@@ -208,9 +208,9 @@ The approximate volumetric power density of bremsstrahlung losses in a plasma is
     P_{br}[\unit{eV s^{-1} m^{-3}}] = 1.06 \times 10^{-19} Z^2 n_{e[\unit{m^{-3}}]} n_{i[\unit{m^{-3}}]} T_{[\unit{eV}]}^{1/2}.
 \end{align*}
 We can assume $n_e = Z n_i$, and for a hydrogen or D-T plasma we have $Z = 1$.
-Once again multiplying by the pinch volume, we get
+Once again dividing by the volumetric density, we get
 \begin{align*}
-    \left( \frac{dT}{dt} \right)_{rad} = \frac{L N}{n} P_{br}
+    \left( \frac{dT}{dt} \right)_{rad} = -\frac{P_{br}}{n}
 \end{align*}
 
 \subsection{Adiabatic compression}
@@ -245,7 +245,7 @@ To advance from time $t^n$ to time $t^{n+1}$ we use the following scheme:
     \end{pmatrix} = IE \begin{pmatrix}
     Q^n \\ I_p^n
     \end{pmatrix}, \\
-    &T' = T^n + \Delta t \left( \frac{L \eta^{n} (I_p^{n+1})^2 n^n}{N} + \frac{LN}{n^n}P_{br}^n \right) \\
+    &T' = T^n + \Delta t \left( \frac{P_{\eta}^n}{n^n} - \frac{P_{br}^n}{n^n} \right) \\
     &T^{n+1} = (I_p^{n+1}/I_p^n)^2 T^n \\
     &n^{n+1} = (T^{n+1} / T')^{\frac{1}{\gamma-1}} n^n
 \end{align*}
