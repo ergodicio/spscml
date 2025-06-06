@@ -7,6 +7,7 @@ from tesseract_core.runtime import Array, Differentiable, Float64
 from tesseract_core.runtime.tree_transforms import filter_func, flatten_with_paths
 import jpu
 import jax.numpy as jnp
+import equinox as eqx
 
 ureg = jpu.UnitRegistry()
 
@@ -29,13 +30,14 @@ class OutputSchema(BaseModel):
 
 
 def apply(inputs: InputSchema) -> OutputSchema:
-    apply_jit(inputs.model_dump())
+    return apply_jit(inputs.model_dump())
 
 
+@jax.jit
 def apply_jit(inputs: dict) -> dict:
     Vp = inputs["Vp"] * ureg.V
     T = inputs["T"] * ureg.eV
-    N = inputs["N"] * 1e18 / ureg.m
+    N = inputs["N"] * 1e18 * (ureg.m**-1)
 
     # Compute the saturation current I = 0.5 * e * N * c_S
     gamma = 5/3
@@ -46,15 +48,46 @@ def apply_jit(inputs: dict) -> dict:
 
     Ip = -jnp.tanh(alpha) * Ip_sat
 
-    return dict(Ip=Ip.to(ureg.kA).magnitude)
+    result = dict(Ip=Ip.to(ureg.kA).magnitude)
+    print("result: ", result)
+    return result
+
 
 
 def vector_jacobian_product(inputs: InputSchema, vjp_inputs: set[str], vjp_outputs: set[str], cotangent_vector: dict):
     return vjp_jit(inputs.model_dump(), tuple(vjp_inputs), tuple(vjp_outputs), cotangent_vector)
             
 
+@eqx.filter_jit
 def vjp_jit(inputs: dict, vjp_inputs: tuple[str], vjp_outputs: tuple[str], cotangent_vector: dict):
     filtered_apply = filter_func(apply_jit, inputs, vjp_outputs)
     _, vjp_func = jax.vjp(filtered_apply, flatten_with_paths(inputs, include_paths=vjp_inputs))
     return vjp_func(cotangent_vector)[0]
 
+
+def abstract_eval(abstract_inputs):
+    """Calculate output shape of apply from the shape of its inputs."""
+    is_shapedtype_dict = lambda x: type(x) is dict and (x.keys() == {"shape", "dtype"})
+    is_shapedtype_struct = lambda x: isinstance(x, jax.ShapeDtypeStruct)
+
+    jaxified_inputs = jax.tree.map(
+        lambda x: jax.ShapeDtypeStruct(**x) if is_shapedtype_dict(x) else x,
+        abstract_inputs.model_dump(),
+        is_leaf=is_shapedtype_dict,
+    )
+    dynamic_inputs, static_inputs = eqx.partition(
+        jaxified_inputs, filter_spec=is_shapedtype_struct
+    )
+
+    def wrapped_apply(dynamic_inputs):
+        inputs = eqx.combine(static_inputs, dynamic_inputs)
+        return apply_jit(inputs)
+
+    jax_shapes = jax.eval_shape(wrapped_apply, dynamic_inputs)
+    return jax.tree.map(
+        lambda x: (
+            {"shape": x.shape, "dtype": str(x.dtype)} if is_shapedtype_struct(x) else x
+        ),
+        jax_shapes,
+        is_leaf=is_shapedtype_struct,
+    )
