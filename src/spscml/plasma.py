@@ -13,3 +13,5 @@ class TwoSpeciesPlasma(eqx.Module):
     Ae: float
     Zi: float
     Ze: float
+
+
