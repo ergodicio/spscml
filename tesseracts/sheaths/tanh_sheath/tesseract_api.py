@@ -19,13 +19,13 @@ class InputSchema(BaseModel):
             description="Plasma temperature [eV]"
     )
     N: Differentiable[Float64] = Field(
-            description="Plasma linear density; N_e = N_i = N [1e18 m^-1]"
+            description="Plasma linear density; N_e = N_i = N [meters^-1]"
     )
 
 
 class OutputSchema(BaseModel):
     Ip: Differentiable[Float64] = Field(
-            description="Plasma current [kA]"
+            description="Plasma current [amperes]"
     )
 
 
@@ -37,7 +37,7 @@ def apply(inputs: InputSchema) -> OutputSchema:
 def apply_jit(inputs: dict) -> dict:
     Vp = inputs["Vp"] * ureg.V
     T = inputs["T"] * ureg.eV
-    N = inputs["N"] * 1e18 * (ureg.m**-1)
+    N = inputs["N"] * (ureg.m**-1)
 
     # Compute the saturation current I = 0.5 * e * N * c_S
     gamma = 5/3
@@ -48,10 +48,8 @@ def apply_jit(inputs: dict) -> dict:
 
     Ip = -jnp.tanh(alpha) * Ip_sat
 
-    result = dict(Ip=Ip.to(ureg.kA).magnitude)
-    print("result: ", result)
+    result = dict(Ip=Ip.to(ureg.ampere).magnitude)
     return result
-
 
 
 def vector_jacobian_product(inputs: InputSchema, vjp_inputs: set[str], vjp_outputs: set[str], cotangent_vector: dict):
