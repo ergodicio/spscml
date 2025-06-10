@@ -30,9 +30,10 @@ def solve_wdm(inputs: dict) -> dict:
     Nt = int(inputs['t_end'] / dt)
 
     with Tesseract.from_url(inputs['sheath_tesseract_url']) as tx:
-        def sheath_solve(Vp, T):
+        def sheath_solve(Vp, T, n):
             tx_inputs = dict(Vp=jnp.array(Vp),
                              N=jnp.array(inputs['N']),
+                             n=jnp.array(n),
                              T=jnp.array(T))
             return apply_tesseract(tx, tx_inputs)['Ip']
 

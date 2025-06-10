@@ -46,11 +46,16 @@ def calculate_plasma_current(Vp, T, n, N):
     plasma = TwoSpeciesPlasma(norm["omega_p_tau"], norm["omega_c_tau"], norm["nu_p_tau"], 
                               Ai, Ae, 1.0, -1.0)
 
-    jax.debug.print("lambda_D: {}", norm["lambda_D"])
+    Lx = 256
+    Nx = 256
+    dxs = Lx/Nx * jnp.ones(Nx)
+    face_locs = jnp.append(jnp.array([0.]), jnp.cumsum(dxs))
+    face_locs = face_locs - (face_locs[-1]/2)
+    jax.debug.print("dxs: {}", dxs)
 
-    x_grid = Grid(200, 100)
-    ion_grid = x_grid.extend_to_phase_space(6*vti, 50)
-    electron_grid = x_grid.extend_to_phase_space(6*vte, 50)
+    x_grid = Grid(face_locs)
+    ion_grid = x_grid.extend_to_phase_space(6*vti, 128)
+    electron_grid = x_grid.extend_to_phase_space(6*vte, 128)
 
     initial_conditions = { 
         'electron': lambda x, v: 1 / (jnp.sqrt(2*jnp.pi)*vte) * jnp.exp(-Ae*(v**2) / (2*Te)),
@@ -77,14 +82,24 @@ def calculate_plasma_current(Vp, T, n, N):
         }
     }
 
+    interelectrode_gap = 0.5 * norm["ureg"].m
+    mfp_fraction = ((0.75*Lx * norm["lambda_D"]) / interelectrode_gap).to('').magnitude
+    sim_mfp = mfp_fraction * (norm["lambda_mfp"] / norm["lambda_D"]).to('').magnitude
+    jax.debug.print("sim mfp: {}", sim_mfp)
+
+    nu_ee = vte / sim_mfp
+    nu_ii = vti / sim_mfp
+
     solver = Solver(plasma, 
                     norm,
                     {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid},
-                    flux_source_enabled=True)
+                    flux_source_enabled=True, nu_ee=nu_ee, nu_ii=nu_ii)
 
     s = 0.5
-    Nt = 8000
-    solve = lambda: solver.solve(s / omega_pe_tau, Nt, initial_conditions, boundary_conditions)
+    dtmax = jnp.minimum(s * jnp.min(dxs) / (6*vte), nu_ee / electron_grid.dv**2)
+    jax.debug.print("dt max: {}", dtmax)
+    jax.debug.print("omega_pe_tau: {}", omega_pe_tau)
+    solve = lambda: solver.solve(1 * dtmax, 5000, initial_conditions, boundary_conditions, dtmax)
     result = solve()
     je = -1 * first_moment(result['electron'], electron_grid)
     ji = 1 * first_moment(result['ion'], ion_grid)

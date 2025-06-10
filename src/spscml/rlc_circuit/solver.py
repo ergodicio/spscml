@@ -52,7 +52,7 @@ class Solver():
             assert len(y) == 4
             Q, I, T, n = y
             Q_I = jnp.array([Q, I])
-            Q_I_new, Vnew = self.implicit_euler_step(Q_I, Vp, T, dt, sheath_solve)
+            Q_I_new, Vnew = self.implicit_euler_step(Q_I, Vp, T, n, dt, sheath_solve)
             I_new = Q_I_new[1]
             T_prime = self.step_heating_and_cooling(I_new, T, n, dt)
             #T_prime = T
@@ -83,12 +83,12 @@ class Solver():
         return 0.2 / lambda_max
 
 
-    def implicit_euler_step(self, y, Vp, T, dt, sheath_solve):
+    def implicit_euler_step(self, y, Vp, T, n, dt, sheath_solve):
         Qn, Qdotn = y
 
         def residual(y):
             Qnext, Vpnext = y
-            Ip = sheath_solve(Vpnext, T)
+            Ip = sheath_solve(Vpnext, T, n)
             factor = self.Lp / (self.L - self.Lp)
             V_Rp = (1 - factor) * (Vpnext - factor * (-Qnext / self.C - self.R * Ip))
             r = jnp.array([
@@ -109,7 +109,7 @@ class Solver():
             guess = guess + step
 
         Q, V = guess
-        Ip = sheath_solve(V, T)
+        Ip = sheath_solve(V, T, n)
         return jnp.array([Q, Ip]), V
 
 

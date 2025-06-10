@@ -9,24 +9,17 @@ import jpu
 import jax.numpy as jnp
 import equinox as eqx
 
+from spscml.sheath_interface import SheathInputSchema, SheathOutputSchema
+
 ureg = jpu.UnitRegistry()
 
-class InputSchema(BaseModel):
-    Vp: Differentiable[Float64] = Field(
-            description="Anode-cathode voltage gap [volts]"
-    )
-    T: Differentiable[Float64] = Field(
-            description="Plasma temperature [eV]"
-    )
-    N: Differentiable[Float64] = Field(
-            description="Plasma linear density; N_e = N_i = N [meters^-1]"
-    )
+
+class InputSchema(SheathInputSchema):
+    pass
 
 
-class OutputSchema(BaseModel):
-    Ip: Differentiable[Float64] = Field(
-            description="Plasma current [amperes]"
-    )
+class OutputSchema(SheathOutputSchema):
+    pass
 
 
 def apply(inputs: InputSchema) -> OutputSchema:
