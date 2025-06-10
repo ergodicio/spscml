@@ -27,7 +27,7 @@ def slope_limiter(a, b, limiter_type):
         raise ValueError(f"Unknown limiter type `{limiter_type}`")
 
 
-def slope_limited_face_values(cell_averages, cell_to_cell_dxs, cell_widths, limiter_type, axis=0):
+def slope_limited_face_values(cell_averages, limiter_type, axis=0):
     """
     Compute the slope-limited approximation to a grid function at the left
     and right side of each face.
@@ -51,25 +51,24 @@ def slope_limited_face_values(cell_averages, cell_to_cell_dxs, cell_widths, limi
     right_slices = [slice(None)]*cell_averages.ndim
     right_slices[axis] = slice(1, None)
 
-    slopes = (cell_averages[*right_slices] - cell_averages[*left_slices]) / cell_to_cell_dxs
+    differences = cell_averages[*right_slices] - cell_averages[*left_slices]
 
-    limited_slopes = slope_limiter(slopes[*left_slices], 
-                                   slopes[*right_slices], 
-                                   limiter_type)
+    limited_differences = slope_limiter(differences[*left_slices], 
+                                        differences[*right_slices], 
+                                        limiter_type)
 
     interior_slices = [slice(None)]*cell_averages.ndim
     interior_slices[axis] = slice(1, -1)
     interior_values = cell_averages[*interior_slices]
 
     # The value on the left and right side of each cell
-    left_values = interior_values - limited_slopes * cell_widths / 2
-    right_values = interior_values + limited_slopes * cell_widths / 2
+    left_values = interior_values - limited_differences / 2
+    right_values = interior_values + limited_differences / 2
 
     return dict(left=left_values, right=right_values)
 
 
-def slope_limited_flux_divergence(cell_averages, slope_limiter, numerical_flux, cell_to_cell_dxs, 
-                                  face_to_face_dxs, cell_widths, axis=0):
+def slope_limited_flux_divergence(cell_averages, slope_limiter, numerical_flux, dx, axis=0):
     """
     Computes the flux divergence of numerical_flux applied to the array of cell_averages.
 
@@ -77,7 +76,7 @@ def slope_limited_flux_divergence(cell_averages, slope_limiter, numerical_flux, 
     values are the piecewise linear approximation to the solution at the left and right
     of the face.
     """
-    face_vals = slope_limited_face_values(cell_averages, cell_to_cell_dxs, cell_widths, slope_limiter, axis=axis)
+    face_vals = slope_limited_face_values(cell_averages, slope_limiter, axis=axis)
     left_vals = face_vals['left']
     right_vals = face_vals['right']
 
@@ -89,4 +88,4 @@ def slope_limited_flux_divergence(cell_averages, slope_limiter, numerical_flux, 
         left_face_vals = right_vals[:, :-1, ...]
 
     F = numerical_flux(left_face_vals, right_face_vals)
-    return jnp.diff(F, axis=axis) / face_to_face_dxs
+    return jnp.diff(F, axis=axis) / dx

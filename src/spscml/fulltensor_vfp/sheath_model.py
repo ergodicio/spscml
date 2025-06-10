@@ -53,7 +53,7 @@ def calculate_plasma_current(Vp, T, n, N):
     face_locs = face_locs - (face_locs[-1]/2)
     jax.debug.print("dxs: {}", dxs)
 
-    x_grid = Grid(face_locs)
+    x_grid = Grid(Nx, Lx)
     ion_grid = x_grid.extend_to_phase_space(6*vti, 128)
     electron_grid = x_grid.extend_to_phase_space(6*vte, 128)
 

@@ -106,8 +106,8 @@ class Solver(eqx.Module):
 
             grid = self.grids['x']
             L_flux_source = grid.Lx / 4
-            flux_source_weight = jnp.where(jnp.abs(grid.cell_centers) < L_flux_source, 
-                                           1 / L_flux_source - jnp.abs(grid.cell_centers) / L_flux_source**2,
+            flux_source_weight = jnp.where(jnp.abs(grid.xs) < L_flux_source, 
+                                           1 / L_flux_source - jnp.abs(grid.xs) / L_flux_source**2,
                                            0.0)
             flux_source_weight = jnp.expand_dims(flux_source_weight, axis=1)
             fe0 = jnp.expand_dims(f0['electron'][self.grids['x'].Nx // 2, :], axis=0)
@@ -147,13 +147,12 @@ class Solver(eqx.Module):
 
     def collision_frequency_shape_func(self):
         L = self.grids['x'].Lx
-        #return jnp.expand_dims(jnp.where(jnp.abs(jnp.abs(self.grids['x'].cell_centers) - L/2) < L/6, 0.0, 1.0), axis=1)
 
         midpt = L/3
         # Want 10 e-foldings between the midpoint (2/3rds of the way to the sheath)
         # and the wall
         efolding_dist = (L/6)/10
-        x = self.grids['x'].cell_centers
+        x = self.grids['x'].xs
         h0 = lambda x: 1 + jnp.exp((x/efolding_dist) - midpt/efolding_dist)
         h = 1 / (0.5 * (h0(x) + h0(-x)))
         return jnp.expand_dims(h, axis=1)
@@ -165,21 +164,8 @@ class Solver(eqx.Module):
 
         v = jnp.expand_dims(grid.vs, axis=0)
         F = lambda left, right: jnp.where(v > 0, left * v, right * v)
-        cell_to_cell = jnp.concatenate([
-            jnp.array([grid.cell_to_cell_dxs[0]]),
-            grid.cell_to_cell_dxs,
-            jnp.array([grid.cell_to_cell_dxs[-1]]),
-        ], axis=0)[:, None]
-        cell_widths = grid.face_to_face_dxs[:, None]
-        face_to_face = jnp.concatenate([
-            jnp.array([grid.face_to_face_dxs[0]]),
-            grid.face_to_face_dxs,
-            jnp.array([grid.face_to_face_dxs[-1]]),
-        ], axis=0)[:, None]
         vdfdx = slope_limited_flux_divergence(f_bc_x, 'minmod', F, 
-                                              cell_to_cell, 
-                                              grid.face_to_face_dxs[:, None], 
-                                              face_to_face,
+                                              grid.dx,
                                               axis=0)
 
         # electrostatic acceleration term
@@ -188,7 +174,7 @@ class Solver(eqx.Module):
         E = jnp.expand_dims(E, axis=1)
         fac = self.plasma.omega_c_tau * Z / A
         F = lambda left, right: jnp.where(fac * E > 0, left * fac * E, right * fac * E)
-        Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', F, grid.dv, grid.dv, grid.dv, axis=1)
+        Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', F, grid.dv, axis=1)
 
         # TODO: implement Fokker-Planck operator
 
