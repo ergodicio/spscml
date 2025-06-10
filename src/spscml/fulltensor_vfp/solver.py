@@ -4,17 +4,20 @@ import equinox as eqx
 
 from jaxtyping import PyTree
 from typing import Callable
+from functools import partial
 
 from ..plasma import TwoSpeciesPlasma
 from ..grids import PhaseSpaceGrid
-from ..rk import ssprk2
+from ..rk import rk1, ssprk2
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
-from ..utils import zeroth_moment, first_moment
+from ..utils import zeroth_moment, first_moment, second_moment
+from .dougherty import lbo_operator_ij, species_info
 
 class Solver(eqx.Module):
+    norm: dict
     plasma: TwoSpeciesPlasma
-    grids: PyTree = eqx.field(static=True)
+    grids: PyTree
     flux_source_enabled: bool
 
     """
@@ -22,9 +25,11 @@ class Solver(eqx.Module):
     """
     def __init__(self,
                  plasma: TwoSpeciesPlasma, 
+                 norm,
                  grids,
                  flux_source_enabled):
         self.plasma = plasma
+        self.norm = norm
         self.grids = grids
         self.flux_source_enabled = flux_source_enabled
 
@@ -101,8 +106,10 @@ class Solver(eqx.Module):
             fi0 = jnp.expand_dims(f0['ion'][self.grids['x'].Nx // 2, :], axis=0)
 
             electron_rhs = electron_rhs + total_ion_wall_flux * flux_source_weight * fe0
+            ion_source = total_ion_wall_flux * flux_source_weight * fi0
             ion_rhs = ion_rhs + total_ion_wall_flux * flux_source_weight * fi0
 
+        """
         # Implement dumb electron drag term
         Ne = jnp.expand_dims(zeroth_moment(fe, self.grids['electron']), axis=1)
         ve = self.grids['electron'].vT
@@ -110,8 +117,19 @@ class Solver(eqx.Module):
         electron_stationary_maxwellian = Ne / jnp.sqrt(2*jnp.pi * 1 / Ae) * jnp.exp(-Ae*(ve**2) / (2))
         nu_ei = 0.1
         electron_rhs = electron_rhs + nu_ei * (electron_stationary_maxwellian - fe)
+        """
 
-        # TODO: implement cross-species collision term
+        electron_info = species_info(fe, self.plasma.Ae, self.plasma.Ze, self.grids['electron'], "electron")
+        ion_info = species_info(fi, self.plasma.Ai, self.plasma.Zi, self.grids['ion'], "ion")
+
+        C_ee = lbo_operator_ij(electron_info, electron_info, self.norm)
+        C_ei = lbo_operator_ij(electron_info, ion_info, self.norm)
+        C_ii = lbo_operator_ij(ion_info, ion_info, self.norm)
+        C_ie = lbo_operator_ij(ion_info, electron_info, self.norm)
+        electron_rhs = electron_rhs + C_ee + C_ei
+        ion_rhs = ion_rhs + C_ie + C_ii
+
+        assert electron_rhs.shape == fe.shape
 
         return dict(electron=electron_rhs, ion=ion_rhs)
 
