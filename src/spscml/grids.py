@@ -54,17 +54,6 @@ class Grid():
         return PhaseSpaceGrid(self.Lx, vmax, self.Nx, Nv)
 
 
-    def dirichlet_robin_laplacian(self, robin_alpha, robin_beta):
-        robin_coef = robin_alpha / self.dx + robin_beta
-        return self.laplacian.at[-1, -1].add(robin_alpha / (self.dx * robin_coef) / self.dx**2)
-
-
-    def robin_dirichlet_laplacian(self, robin_alpha, robin_beta):
-        robin_coef = -robin_alpha / self.dx + robin_beta
-        return self.laplacian.at[0, 0].add(-robin_alpha / (self.dx * robin_coef) / self.dx**2)
-
-
-
 
 def laplacian(Nx, dx):
     L = np.zeros((Nx, Nx))
