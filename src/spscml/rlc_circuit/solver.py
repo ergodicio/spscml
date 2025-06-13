@@ -52,7 +52,7 @@ class Solver():
             assert len(y) == 4
             Q, I, T, n = y
             Q_I = jnp.array([Q, I])
-            Q_I_new, Vnew = self.implicit_euler_step(Q_I, Vp, T, dt, sheath_solve)
+            Q_I_new, Vnew = self.implicit_euler_step(Q_I, Vp, T, n, dt, sheath_solve)
             I_new = Q_I_new[1]
             T_prime = self.step_heating_and_cooling(I_new, T, n, dt)
             #T_prime = T
@@ -64,7 +64,7 @@ class Solver():
 
             return (ynew, Vnew, t+dt), jnp.append(ynew, jnp.array([Vnew, t+dt]))
 
-        return jax.lax.scan(scanner, (ics, 0.5, 0), jnp.arange(Nt))
+        return jax.lax.scan(scanner, (ics, 300.0, 0), jnp.arange(Nt))
 
 
     def estimate_max_dt(self):
@@ -78,17 +78,15 @@ class Solver():
                               (1 / (self.L - self.Lp) * (-Qn/self.C - self.R*Qdotn))])
 
         J = jax.jacobian(forward_euler_rhs)(jnp.array([1.0, 0.0]))
-        print(J)
         lambda_max = jnp.max(jnp.abs(jnp.linalg.eigvals(J)))
         return 0.2 / lambda_max
 
 
-    def implicit_euler_step(self, y, Vp, T, dt, sheath_solve):
+    def implicit_euler_step(self, y, Vp, T, n, dt, sheath_solve):
         Qn, Qdotn = y
 
-        def residual(y):
+        def residual_helper(y, Ip):
             Qnext, Vpnext = y
-            Ip = sheath_solve(Vpnext, T)
             factor = self.Lp / (self.L - self.Lp)
             V_Rp = (1 - factor) * (Vpnext - factor * (-Qnext / self.C - self.R * Ip))
             r = jnp.array([
@@ -97,19 +95,37 @@ class Solver():
                 ])
             return r
 
-        guess = jnp.array([Qn, Vp])
-        r, vjp = jax.vjp(residual, guess)
-        vjp(jnp.array([1., 0.]))
+        def residual(y):
+            Qnext, Vpnext = y
+            Ip = sheath_solve(Vpnext, T, n)
+            return residual_helper(y, Ip)
 
-        for i in range(10):
-            r_val, r_vjp = jax.vjp(residual, guess)
-            J = jnp.stack([vjp(jnp.array([1., 0.]))[0],
-                           vjp(jnp.array([0., 1.]))[0]], axis=1).T
+
+        def jac_residual(y):
+            Q, Vp = y
+            dQ = Q * 1e-6
+            dV = Vp * 1e-6
+            e1 = jnp.array([dQ, 0.])
+            e2 = jnp.array([0., dV])
+            jr1 = (residual(y + e1) - residual(y - e1)) / (2*dQ)
+            jr2 = (residual(y + e2) - residual(y - e2)) / (2*dV)
+            J = jnp.stack([jr1, jr2], axis=1)
+            return J
+
+        
+        guess = jnp.array([Qn, Vp])
+
+        # Newton iteration
+        for i in range(3):
+            jax.debug.print("guess = {}", guess)
+            r_val = residual(guess)
+            jax.debug.print("residual = {}", r_val)
+            J = jac_residual(guess)
             step = -jnp.linalg.solve(J, r_val)
             guess = guess + step
 
         Q, V = guess
-        Ip = sheath_solve(V, T)
+        Ip = sheath_solve(V, T, n)
         return jnp.array([Q, Ip]), V
 
 

@@ -1,9 +1,22 @@
 import equinox as eqx
 import numpy as np
 import jax.numpy as jnp
+from jax import Array
 
 
-class PhaseSpaceGrid():
+class PhaseSpaceGrid(eqx.Module):
+    Lx: float
+    vmax: float
+    Nx: int
+    Nv: int
+    dx: float
+    dv: float
+    xs: Array
+    vs: Array
+    vT: Array
+    xv: tuple[Array]
+    laplacian: Array
+
     def __init__(self, Lx, vmax, Nx, Nv):
         self.Lx = Lx
         self.vmax = vmax
@@ -39,17 +52,6 @@ class Grid():
 
     def extend_to_phase_space(self, vmax, Nv):
         return PhaseSpaceGrid(self.Lx, vmax, self.Nx, Nv)
-
-
-    def dirichlet_robin_laplacian(self, robin_alpha, robin_beta):
-        robin_coef = robin_alpha / self.dx + robin_beta
-        return self.laplacian.at[-1, -1].add(robin_alpha / (self.dx * robin_coef) / self.dx**2)
-
-
-    def robin_dirichlet_laplacian(self, robin_alpha, robin_beta):
-        robin_coef = -robin_alpha / self.dx + robin_beta
-        return self.laplacian.at[0, 0].add(-robin_alpha / (self.dx * robin_coef) / self.dx**2)
-
 
 
 

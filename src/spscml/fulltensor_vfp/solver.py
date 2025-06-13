@@ -4,58 +4,62 @@ import equinox as eqx
 
 from jaxtyping import PyTree
 from typing import Callable
+from functools import partial
+from diffrax import diffeqsolve, Euler, Dopri5, ODETerm, PIDController, SaveAt
 
 from ..plasma import TwoSpeciesPlasma
 from ..grids import PhaseSpaceGrid
-from ..rk import ssprk2
+from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
-from ..utils import zeroth_moment, first_moment
+from ..utils import zeroth_moment, first_moment, second_moment
+from .dougherty import lbo_operator_ij, species_info, lbo_operator_ij_L_diagonals
 
 class Solver(eqx.Module):
+    norm: dict
     plasma: TwoSpeciesPlasma
-    grids: PyTree = eqx.field(static=True)
+    grids: PyTree
     flux_source_enabled: bool
+    nu_ee: float
+    nu_ii: float
 
     """
     Solves the Vlasov-Fokker-Planck equation
     """
     def __init__(self,
                  plasma: TwoSpeciesPlasma, 
+                 norm,
                  grids,
-                 flux_source_enabled):
+                 flux_source_enabled,
+                 nu_ee, nu_ii):
         self.plasma = plasma
+        self.norm = norm
         self.grids = grids
         self.flux_source_enabled = flux_source_enabled
-
-
-    def max_dt(self):
-        CFL = 0.8
-        grid = self.grids['electron']
-        free_streaming_limit = CFL * grid.dx / grid.vmax
-        omega_pe = self.plasma.omega_p_tau / jnp.sqrt(self.plasma.Ae)
-        omega_pe_limit = 0.2 / omega_pe
-        return jnp.minimum(omega_pe_limit, free_streaming_limit)
+        self.nu_ee = nu_ee
+        self.nu_ii = nu_ii
 
 
     def step(self, fs, dt, bcs, f0):
-        return ssprk2(fs, lambda f: self.vlasov_fp_rhs(f, bcs, f0), dt)
+        nonstiff_rhs = lambda f: self.vlasov_rhs(f, bcs, f0)
+        stiff_rhs = self.explicit_collisions_rhs
+        stiff_implicit_solver = self.implicit_collisions
+        return imex_ssp2(fs, nonstiff_rhs, stiff_rhs, stiff_implicit_solver, dt)
 
 
-    def solve(self, dt, Nt, initial_conditions, boundary_conditions):
+    def solve(self, dt, Nt, initial_conditions, boundary_conditions, dtmax):
         f0 = {
             'electron': initial_conditions['electron'](*self.grids['electron'].xv),
             'ion': initial_conditions['ion'](*self.grids['ion'].xv),
         }
 
         t = 0.0
-        dt = self.max_dt()
         f = f0
 
-        def one_step(i, f):
+        def onestep(i, f):
             return self.step(f, dt, boundary_conditions, f0)
 
-        return jax.lax.fori_loop(0, Nt, one_step, f0)
+        return jax.lax.fori_loop(0, Nt, onestep, f0)
 
 
     def n(self, f, grid):
@@ -75,7 +79,7 @@ class Solver(eqx.Module):
         return E
 
 
-    def vlasov_fp_rhs(self, fs, boundary_conditions, f0):
+    def vlasov_rhs(self, fs, boundary_conditions, f0):
         fe = fs['electron']
         fi = fs['ion']
         E = self.poisson_solve_from_fs(fs, boundary_conditions)
@@ -101,19 +105,77 @@ class Solver(eqx.Module):
             fi0 = jnp.expand_dims(f0['ion'][self.grids['x'].Nx // 2, :], axis=0)
 
             electron_rhs = electron_rhs + total_ion_wall_flux * flux_source_weight * fe0
+            ion_source = total_ion_wall_flux * flux_source_weight * fi0
             ion_rhs = ion_rhs + total_ion_wall_flux * flux_source_weight * fi0
 
-        # Implement dumb electron drag term
-        Ne = jnp.expand_dims(zeroth_moment(fe, self.grids['electron']), axis=1)
-        ve = self.grids['electron'].vT
-        Ae = self.plasma.Ae
-        electron_stationary_maxwellian = Ne / jnp.sqrt(2*jnp.pi * 1 / Ae) * jnp.exp(-Ae*(ve**2) / (2))
-        nu_ei = 0.1
-        electron_rhs = electron_rhs + nu_ei * (electron_stationary_maxwellian - fe)
-
-        # TODO: implement cross-species collision term
+        assert electron_rhs.shape == fe.shape
 
         return dict(electron=electron_rhs, ion=ion_rhs)
+
+
+    # Solves 1 - dt * Q(f) = rhs for both species
+    def implicit_collisions(self, rhs, dt):
+        fe = self.single_species_implicit_collisions(rhs['electron'], 
+                                                     self.grids['electron'], self.plasma.Ae, dt, self.nu_ee)
+        fi = self.single_species_implicit_collisions(rhs['ion'], 
+                                                     self.grids['ion'], self.plasma.Ai, dt, self.nu_ii)
+        return {'electron': fe, 'ion': fi}
+
+
+    def single_species_implicit_collisions(self, rhs, grid, A, dt, nu):
+        dl, d, du = lbo_operator_ij_L_diagonals(
+                {"grid": grid, "n": 1.0,"A": A},
+                {"T": 1.0, "u": 0.0, "lambda": nu},
+                )
+
+        nu = self.collision_frequency_shape_func().flatten()
+
+        solve = lambda nu, rhs : jax.lax.linalg.tridiagonal_solve(-dt * nu*dl, 1 - dt * nu*d, -dt * nu*du, rhs[:, None]).flatten()
+        f_next = jax.vmap(solve)(nu, rhs)
+        return f_next
+
+
+    def explicit_collisions_rhs(self, fs):
+        dfe = self.single_species_explicit_collisions_rhs(fs['electron'],
+                                                          self.grids['electron'], self.plasma.Ae, self.nu_ee)
+        dfi = self.single_species_explicit_collisions_rhs(fs['ion'],
+                                                          self.grids['ion'], self.plasma.Ai, self.nu_ii)
+        return {'electron': dfe, 'ion': dfi}
+
+
+    def single_species_explicit_collisions_rhs(self, f, grid, A, nu):
+        dl, d, du = lbo_operator_ij_L_diagonals(
+                {"grid": grid, "n": 1.0,"A": A},
+                {"T": 1.0, "u": 0.0, "lambda": nu},
+                )
+
+        # dl and du have zeros in the wrong place for implementing a multiplication
+        dl = dl[1:]
+        du = du[:-1]
+
+        h = self.collision_frequency_shape_func().flatten()
+
+        mul = lambda h, f: h * jnp.zeros(grid.Nv) \
+                .at[1:].add(dl * f[:-1]) \
+                .at[:].add(d*f) \
+                .at[:-1].add(du * f[1:])
+        rhs = jax.vmap(mul)(h, f)
+        return rhs
+
+
+
+
+    def collision_frequency_shape_func(self):
+        L = self.grids['x'].Lx
+
+        midpt = L/3
+        # Want 10 e-foldings between the midpoint (2/3rds of the way to the sheath)
+        # and the wall
+        efolding_dist = (L/6)/10
+        x = self.grids['x'].xs
+        h0 = lambda x: 1 + jnp.exp((x/efolding_dist) - midpt/efolding_dist)
+        h = 1 / (0.5 * (h0(x) + h0(-x)))
+        return jnp.expand_dims(h, axis=1)
 
 
     def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs):
@@ -122,7 +184,9 @@ class Solver(eqx.Module):
 
         v = jnp.expand_dims(grid.vs, axis=0)
         F = lambda left, right: jnp.where(v > 0, left * v, right * v)
-        vdfdx = slope_limited_flux_divergence(f_bc_x, 'minmod', F, grid.dx, axis=0)
+        vdfdx = slope_limited_flux_divergence(f_bc_x, 'minmod', F, 
+                                              grid.dx,
+                                              axis=0)
 
         # electrostatic acceleration term
         f_bc_v = self.apply_bcs(f, bcs, 'v')

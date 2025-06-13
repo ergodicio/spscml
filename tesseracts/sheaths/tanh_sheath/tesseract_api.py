@@ -2,6 +2,7 @@ import jax
 
 jax.config.update("jax_enable_x64", True)
 
+from typing import Any
 from pydantic import BaseModel, Field
 from tesseract_core.runtime import Array, Differentiable, Float64
 from tesseract_core.runtime.tree_transforms import filter_func, flatten_with_paths
@@ -9,24 +10,17 @@ import jpu
 import jax.numpy as jnp
 import equinox as eqx
 
+from spscml.sheath_interface import SheathInputSchema, SheathOutputSchema
+
 ureg = jpu.UnitRegistry()
 
-class InputSchema(BaseModel):
-    Vp: Differentiable[Float64] = Field(
-            description="Anode-cathode voltage gap [volts]"
-    )
-    T: Differentiable[Float64] = Field(
-            description="Plasma temperature [eV]"
-    )
-    N: Differentiable[Float64] = Field(
-            description="Plasma linear density; N_e = N_i = N [meters^-1]"
-    )
+
+class InputSchema(SheathInputSchema):
+    pass
 
 
-class OutputSchema(BaseModel):
-    Ip: Differentiable[Float64] = Field(
-            description="Plasma current [amperes]"
-    )
+class OutputSchema(SheathOutputSchema):
+    pass
 
 
 def apply(inputs: InputSchema) -> OutputSchema:
@@ -52,6 +46,27 @@ def apply_jit(inputs: dict) -> dict:
     return result
 
 
+def jacobian(
+    inputs: InputSchema,
+    jac_inputs: set[str],
+    jac_outputs: set[str],
+):
+    return jac_jit(inputs.model_dump(), tuple(jac_inputs), tuple(jac_outputs))
+
+
+@eqx.filter_jit
+def jac_jit(
+    inputs: dict,
+    jac_inputs: tuple[str],
+    jac_outputs: tuple[str],
+):
+    filtered_apply = filter_func(apply_jit, inputs, jac_outputs)
+    return jax.jacrev(filtered_apply)(
+        flatten_with_paths(inputs, include_paths=jac_inputs)
+    )
+
+
+
 def vector_jacobian_product(inputs: InputSchema, vjp_inputs: set[str], vjp_outputs: set[str], cotangent_vector: dict):
     return vjp_jit(inputs.model_dump(), tuple(vjp_inputs), tuple(vjp_outputs), cotangent_vector)
             
@@ -61,6 +76,32 @@ def vjp_jit(inputs: dict, vjp_inputs: tuple[str], vjp_outputs: tuple[str], cotan
     filtered_apply = filter_func(apply_jit, inputs, vjp_outputs)
     _, vjp_func = jax.vjp(filtered_apply, flatten_with_paths(inputs, include_paths=vjp_inputs))
     return vjp_func(cotangent_vector)[0]
+
+
+def jacobian_vector_product(
+    inputs: InputSchema,
+    jvp_inputs: set[str],
+    jvp_outputs: set[str],
+    tangent_vector: dict[str, Any],
+):
+    return jvp_jit(
+        inputs.model_dump(),
+        tuple(jvp_inputs),
+        tuple(jvp_outputs),
+        tangent_vector,
+    )
+
+
+@eqx.filter_jit
+def jvp_jit(
+    inputs: dict, jvp_inputs: tuple[str], jvp_outputs: tuple[str], tangent_vector: dict
+):
+    filtered_apply = filter_func(apply_jit, inputs, jvp_outputs)
+    return jax.jvp(
+        filtered_apply,
+        [flatten_with_paths(inputs, include_paths=jvp_inputs)],
+        [tangent_vector],
+    )[1]
 
 
 def abstract_eval(abstract_inputs):

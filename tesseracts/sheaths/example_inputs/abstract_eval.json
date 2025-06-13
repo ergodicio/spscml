@@ -1,0 +1,10 @@
+{
+    "inputs": {
+        "N": {"shape": [], "dtype": "float64"},
+        "n": {"shape": [], "dtype": "float64"},
+        "T": {"shape": [], "dtype": "float64"},
+        "Vp": {"shape": [], "dtype": "float64"},
+        "Lz": {"shape": [], "dtype": "float64"}
+     }
+}
+

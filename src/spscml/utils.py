@@ -12,3 +12,14 @@ def zeroth_moment(f, grid: PhaseSpaceGrid):
 
 def first_moment(f, grid: PhaseSpaceGrid):
     return jnp.sum(f * grid.vT, axis=1) * grid.dv
+
+
+def second_moment(f, grid: PhaseSpaceGrid):
+    return jnp.sum(f * grid.vT**2 / 2, axis=1) * grid.dv
+
+
+def temperature(f, A, grid: PhaseSpaceGrid):
+    n = zeroth_moment(f, grid)
+    u = jnp.expand_dims(first_moment(f, grid) / n, axis=1)
+    T = A * jnp.sum(f * (grid.vT - u)**2, axis=1) * grid.dv
+    return T
