@@ -43,9 +43,6 @@ def lbo_operator_ij(species_i, species_j, norm):
     return lambda_ij[:, None] * theta_ij * (drift + diffusion[:, 1:-1])
 
 
-#def implicit_step_moments(
-
-
 def lbo_operator_ij_L_diagonals(species_i, mixture_moments):
     grid = species_i["grid"]
     ni = species_i["n"]

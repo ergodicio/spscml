@@ -9,7 +9,7 @@ from diffrax import diffeqsolve, Euler, Dopri5, ODETerm, PIDController, SaveAt
 
 from ..plasma import TwoSpeciesPlasma
 from ..grids import PhaseSpaceGrid
-from ..rk import rk1, ssprk2
+from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
 from ..utils import zeroth_moment, first_moment, second_moment
@@ -41,9 +41,10 @@ class Solver(eqx.Module):
 
 
     def step(self, fs, dt, bcs, f0):
-        #return ssprk2(fs, lambda f: self.vlasov_fp_rhs(f, bcs, f0), dt)
-        fs_prime = ssprk2(fs, lambda f: self.vlasov_fp_rhs(f, bcs, f0), dt)
-        return self.implicit_collisions(fs_prime, dt)
+        nonstiff_rhs = lambda f: self.vlasov_rhs(f, bcs, f0)
+        stiff_rhs = self.explicit_collisions_rhs
+        stiff_implicit_solver = self.implicit_collisions
+        return imex_ssp2(fs, nonstiff_rhs, stiff_rhs, stiff_implicit_solver, dt)
 
 
     def solve(self, dt, Nt, initial_conditions, boundary_conditions, dtmax):
@@ -54,16 +55,6 @@ class Solver(eqx.Module):
 
         t = 0.0
         f = f0
-
-        '''
-        vf = lambda t, f, args: self.vlasov_fp_rhs(f, *args)
-        term = ODETerm(vf)
-        solver = Dopri5()
-        saveat = SaveAt(ts=[t_end])
-        controller = PIDController(rtol=1e-5, atol=1e-5, dtmax=dtmax)
-
-        sol = diffeqsolve(term, solver, y0=f0, args=(boundary_conditions, f0), dt0=dtmax/2, t0=0, t1=t_end)
-        '''
 
         def onestep(i, f):
             return self.step(f, dt, boundary_conditions, f0)
@@ -88,7 +79,7 @@ class Solver(eqx.Module):
         return E
 
 
-    def vlasov_fp_rhs(self, fs, boundary_conditions, f0):
+    def vlasov_rhs(self, fs, boundary_conditions, f0):
         fe = fs['electron']
         fi = fs['ion']
         E = self.poisson_solve_from_fs(fs, boundary_conditions)
@@ -122,15 +113,16 @@ class Solver(eqx.Module):
         return dict(electron=electron_rhs, ion=ion_rhs)
 
 
-    def implicit_collisions(self, fs, dt):
-        fe = self.single_species_implicit_collisions(fs['electron'], 
+    # Solves 1 - dt * Q(f) = rhs for both species
+    def implicit_collisions(self, rhs, dt):
+        fe = self.single_species_implicit_collisions(rhs['electron'], 
                                                      self.grids['electron'], self.plasma.Ae, dt, self.nu_ee)
-        fi = self.single_species_implicit_collisions(fs['ion'], 
+        fi = self.single_species_implicit_collisions(rhs['ion'], 
                                                      self.grids['ion'], self.plasma.Ai, dt, self.nu_ii)
         return {'electron': fe, 'ion': fi}
 
 
-    def single_species_implicit_collisions(self, f, grid, A, dt, nu):
+    def single_species_implicit_collisions(self, rhs, grid, A, dt, nu):
         dl, d, du = lbo_operator_ij_L_diagonals(
                 {"grid": grid, "n": 1.0,"A": A},
                 {"T": 1.0, "u": 0.0, "lambda": nu},
@@ -138,10 +130,38 @@ class Solver(eqx.Module):
 
         nu = self.collision_frequency_shape_func().flatten()
 
-        solve = lambda nu, f: jax.lax.linalg.tridiagonal_solve(-dt * nu*dl, 1 - dt * nu*d, -dt * nu*du, 
-                                                               f[:, None]).flatten()
-        f_next = jax.vmap(solve)(nu, f)
+        solve = lambda nu, rhs : jax.lax.linalg.tridiagonal_solve(-dt * nu*dl, 1 - dt * nu*d, -dt * nu*du, rhs[:, None]).flatten()
+        f_next = jax.vmap(solve)(nu, rhs)
         return f_next
+
+
+    def explicit_collisions_rhs(self, fs):
+        dfe = self.single_species_explicit_collisions_rhs(fs['electron'],
+                                                          self.grids['electron'], self.plasma.Ae, self.nu_ee)
+        dfi = self.single_species_explicit_collisions_rhs(fs['ion'],
+                                                          self.grids['ion'], self.plasma.Ai, self.nu_ii)
+        return {'electron': dfe, 'ion': dfi}
+
+
+    def single_species_explicit_collisions_rhs(self, f, grid, A, nu):
+        dl, d, du = lbo_operator_ij_L_diagonals(
+                {"grid": grid, "n": 1.0,"A": A},
+                {"T": 1.0, "u": 0.0, "lambda": nu},
+                )
+
+        # dl and du have zeros in the wrong place for implementing a multiplication
+        dl = dl[1:]
+        du = du[:-1]
+
+        h = self.collision_frequency_shape_func().flatten()
+
+        mul = lambda h, f: h * jnp.zeros(grid.Nv) \
+                .at[1:].add(dl * f[:-1]) \
+                .at[:].add(d*f) \
+                .at[:-1].add(du * f[1:])
+        rhs = jax.vmap(mul)(h, f)
+        return rhs
+
 
 
 

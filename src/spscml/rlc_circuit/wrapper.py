@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import jax
 from tesseract_core import Tesseract
 from tesseract_jax import apply_tesseract
+from functools import partial
 
 from .solver import Solver
 
@@ -30,12 +31,35 @@ def solve_wdm(inputs: dict) -> dict:
     Nt = int(inputs['t_end'] / dt)
 
     with Tesseract.from_url(inputs['sheath_tesseract_url']) as tx:
+        #@jax.custom_jvp
         def sheath_solve(Vp, T, n):
             tx_inputs = dict(Vp=jnp.array(Vp),
                              N=jnp.array(inputs['N']),
                              n=jnp.array(n),
-                             T=jnp.array(T))
-            return apply_tesseract(tx, tx_inputs)['Ip']
+                             T=jnp.array(T),
+                             Lz=Lz)
+            result = apply_tesseract(tx, tx_inputs)['Ip']
+            jax.debug.print("Vp = {}, N={}, T={}, n={}, Ip = {}", Vp, inputs['N'], T, n, result)
+            return result
+
+
+        # The argument order is correct: https://docs.jax.dev/en/latest/advanced-autodiff.html#jax-custom-jvp-with-nondiff-argnums
+        """
+        @sheath_solve.defjvp
+        def sheath_solve_jvp(primals, tangents):
+            V, T, n = primals
+            Vdot, Tdot, ndot = tangents
+            # primal_out = sheath_solve(V, T, n)
+            # T and V are in comparable units, so h can be relative to V.
+            h = V * 1e-7
+            Ip1 = sheath_solve(V+h, T, n)
+            Ip2 = sheath_solve(V-h, T, n)
+            # Save an evaluation by estimating Ip(V) as the average of these two
+            primal_out = 0.5*(Ip1 + Ip2)
+            tangent_out = (Ip1 - Ip2) / (2*h) * Vdot
+            return primal_out, tangent_out
+        """
+
 
         _, solution = wdm_solver.solve(dt, Nt, ics, sheath_solve)
 

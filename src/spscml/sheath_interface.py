@@ -15,6 +15,14 @@ class SheathInputSchema(BaseModel):
     N: Differentiable[Float64] = Field(
             description="Plasma linear density; N_e = N_i = N [meters^-1]"
     )
+    Lz: Differentiable[Float64] = Field(
+            description="Inter-electrode length [meters]"
+    )
+    mlflow_parent_run_id: str | None = Field(
+            default=None,
+            description="The parent mlflow run id, if any"
+    )
+
 
 
 class SheathOutputSchema(BaseModel):

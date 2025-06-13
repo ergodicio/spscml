@@ -6,11 +6,28 @@ from ..utils import zeroth_moment, first_moment, temperature
 from ..plasma import TwoSpeciesPlasma
 from ..grids import Grid, PhaseSpaceGrid
 from ..normalization import plasma_norm
+from ..poisson import poisson_solve
 
 import jpu
 
+
+Lz_LAMBDA_D = 256
+
+
+def make_plasma(norm):
+    return TwoSpeciesPlasma(norm["omega_p_tau"], norm["omega_c_tau"], norm["nu_p_tau"], 
+                            Ai=1.0, Ae=0.04, Zi=1.0, Ze=-1.0)
+
+
+def reduced_mfp_for_sim(norm, Lz):
+    interelectrode_gap = Lz * norm["ureg"].m
+    mfp_fraction = ((0.75*Lz_LAMBDA_D * norm["lambda_D"]) / interelectrode_gap).to('').magnitude
+    sim_mfp = mfp_fraction * (norm["lambda_mfp"] / norm["lambda_D"]).to('').magnitude
+    return sim_mfp
+
+
 @jax.jit
-def calculate_plasma_current(Vp, T, n, N):
+def calculate_plasma_current(Vp, T, n, N, Lz, **kwargs):
     '''
     Calculates the plasma current carried by a plasma with the given temperature and
     number density across an electrode gap at the given voltage.
@@ -24,42 +41,28 @@ def calculate_plasma_current(Vp, T, n, N):
     returns:
         - Ip: The space-averaged current [amperes]
     '''
-    Ae = 0.04
-    Ai = 1.0
-
     norm = plasma_norm(T, n)
     ureg = norm["ureg"]
 
     Vp = (Vp * ureg.volt / norm["V0"]).magnitude
+    plasma = make_plasma(norm)
+    sim_mfp = reduced_mfp_for_sim(norm, Lz)
+
 
     Te = 1.0
     Ti = 1.0
 
-    vte = jnp.sqrt(Te / Ae)
-    vti = jnp.sqrt(Ti / Ai)
+    vte = jnp.sqrt(Te / plasma.Ae)
+    vti = jnp.sqrt(Ti / plasma.Ai)
 
-    omega_pe_tau = jnp.sqrt(1 / Ae) * norm["omega_p_tau"]
-    jax.debug.print("omega pe: {}", omega_pe_tau)
-    jax.debug.print("omega_c_tau: {}", norm["omega_c_tau"])
-    jax.debug.print("nu_p_tau: {}", norm["nu_p_tau"])
-
-    plasma = TwoSpeciesPlasma(norm["omega_p_tau"], norm["omega_c_tau"], norm["nu_p_tau"], 
-                              Ai, Ae, 1.0, -1.0)
-
-    Lx = 256
     Nx = 256
-    dxs = Lx/Nx * jnp.ones(Nx)
-    face_locs = jnp.append(jnp.array([0.]), jnp.cumsum(dxs))
-    face_locs = face_locs - (face_locs[-1]/2)
-    jax.debug.print("dxs: {}", dxs)
-
-    x_grid = Grid(Nx, Lx)
-    ion_grid = x_grid.extend_to_phase_space(6*vti, 128)
-    electron_grid = x_grid.extend_to_phase_space(6*vte, 128)
+    x_grid = Grid(Nx, Lz_LAMBDA_D)
+    ion_grid = x_grid.extend_to_phase_space(6*vti, 64)
+    electron_grid = x_grid.extend_to_phase_space(6*vte, 64)
 
     initial_conditions = { 
-        'electron': lambda x, v: 1 / (jnp.sqrt(2*jnp.pi)*vte) * jnp.exp(-Ae*(v**2) / (2*Te)),
-        'ion': lambda x, v: 1 / (jnp.sqrt(2*jnp.pi)*vti) * jnp.exp(-Ai*(v**2) / (2*Ti))
+        'electron': lambda x, v: 1 / (jnp.sqrt(2*jnp.pi)*vte) * jnp.exp(-plasma.Ae*(v**2) / (2*Te)),
+        'ion': lambda x, v: 1 / (jnp.sqrt(2*jnp.pi)*vti) * jnp.exp(-plasma.Ai*(v**2) / (2*Ti))
     }
 
     left_ion_absorbing_wall = lambda f_in: jnp.where(ion_grid.vT > 0, 0.0, f_in)
@@ -82,11 +85,6 @@ def calculate_plasma_current(Vp, T, n, N):
         }
     }
 
-    interelectrode_gap = 0.5 * norm["ureg"].m
-    mfp_fraction = ((0.75*Lx * norm["lambda_D"]) / interelectrode_gap).to('').magnitude
-    sim_mfp = mfp_fraction * (norm["lambda_mfp"] / norm["lambda_D"]).to('').magnitude
-    jax.debug.print("sim mfp: {}", sim_mfp)
-
     nu_ee = vte / sim_mfp
     nu_ii = vti / sim_mfp
 
@@ -96,9 +94,8 @@ def calculate_plasma_current(Vp, T, n, N):
                     flux_source_enabled=True, nu_ee=nu_ee, nu_ii=nu_ii)
 
     s = 0.5
-    dtmax = jnp.minimum(s * jnp.min(dxs) / (6*vte), nu_ee / electron_grid.dv**2)
-    jax.debug.print("dt max: {}", dtmax)
-    jax.debug.print("omega_pe_tau: {}", omega_pe_tau)
+    dtmax = jnp.minimum(s * x_grid.dx / (6*vte), nu_ee / electron_grid.dv**2)
+
     solve = lambda: solver.solve(1 * dtmax, 5000, initial_conditions, boundary_conditions, dtmax)
     result = solve()
     je = -1 * first_moment(result['electron'], electron_grid)
@@ -106,10 +103,13 @@ def calculate_plasma_current(Vp, T, n, N):
     j = je + ji
     j_avg = jnp.sum(j) / x_grid.Nx
 
+    ne = zeroth_moment(result['electron'], electron_grid)
     ni = zeroth_moment(result['ion'], ion_grid)
-    Ti = temperature(result['ion'], Ai, ion_grid)
+    Ti = temperature(result['ion'], plasma.Ai, ion_grid)
 
     Ip = (j_avg * norm["j0"] * (N / n) * ureg.m**2).to(ureg.amperes)
+
+    E = poisson_solve(x_grid, plasma, plasma.Zi*ni+plasma.Ze*ne, boundary_conditions)
 
     return dict(
             Ip=Ip.magnitude,
@@ -119,5 +119,6 @@ def calculate_plasma_current(Vp, T, n, N):
             electron_grid=electron_grid,
             je=je,
             ji=ji,
+            E=E,
             ni=ni,
             )

@@ -262,19 +262,24 @@ so that the ratio of volumetric densities is determined by $T'$.
 
 \section{Vlasov discretizations}
 
-The governing kinetic equation for our study is the 1D1V Vlasov-Dougherty-Fokker-Planck equation in
+The governing kinetic equation for our study is the 1D1V Vlasov-Fokker-Planck equation in
 the ``flexible plasma normalization'' \cite{millerMultispecies13momentModel2016}:
 \begin{align}
     \label{eqn:vlasov_fp}
     \partial_t f_s + v \partial_x f_s + (\omega_c \tau) \frac{Z_s}{A_s} E \partial_v f_s &= Q(f_s) \\
-                                                                                         &= \sum_{s'} Q_{s s'}(f_s)  \\
-                                                                                         &= (\nu_p \tau) \sum_s \nu_{s s'} \partial_v \left( \frac{T_{s s'}}{m_s} \partial_v f_s + (v - u_{s s'}) f_s \right).
+                                                                                         &= \nu_s(x) \partial_v \left( \frac{T_{0}}{A_s} \partial_v f_s + v f_s \right).
 \end{align}
+The collision operator $Q$ is a linearized version of the Dougherty-Fokker-Planck operator about an equilibrium
+distribution with temperature $T_{0}$ and velocity $u = 0$.
+The collision frequency $\nu_s(x)$ is spatially dependent, since we apply an increased collision frequency in the center of the domain
+in order to simulate equilibration with the bulk plasma.
+The physical mean free path is many thousands of Debye lengths, but our simulation domain is only a few hundred.
+Increasing $\nu$ lets us obtain a Maxwellian distribution in the center of the domain.
+
 The normalization constants appearing in this equation are as follows:
 \begin{itemize}
     \item $Z_s$ and $A_s$ are the normalized charge and mass of species $s$, expressed in units of the proton charge and mass.
     \item $\omega_c \tau$ is the normalized reference proton cyclotron frequency in a field $B_0$ which would give unit plasma beta: $|B_0|^2 / 2 \mu_0 = n_0 T_0$.
-    \item $\nu_p \tau$ is the normalized proton collision frequency.
 \end{itemize}
 For now we can take these normalization constants as given; we will need to concern ourselves with their definitions when we
 move on to translating a specific physical problem into our equation setup.
@@ -305,6 +310,16 @@ boundary condition. At a spatial boundary $x_b$ with outward normal vector $\mat
     f_s^b(x_b, v) = \mathbf{1}_{\mathbf{n}(x_b) \cdot v < 0} f_s(x_, v),
 \end{align}
 where $\mathbf{1}$ is the indicator function.
+
+\subsection{Full-tensor discretization}
+
+We use the IMEX-SSP2(2, 2, 2) L-stable scheme:
+\begin{align*}
+    f^{(1)} &= f^n + \Delta t \gamma Q(f^{(1)}) \\
+    f^{(2)} &= f^n - \Delta t  \left( v \partial_x f^{(1)} + (\omega_c \tau) \frac{Z}{A} E^{(1)} \partial_v f^{(1)} \right) + \Delta t \left( (1 - 2\gamma) Q(f^{(1)}) + \gamma Q(f^{(2)}) \right)  \\
+    f^{n+1} &= f^n - \Delta t \left( \frac{1}{2} \left[ v \partial_x f^{(1)} + (\omega_c \tau) \frac{Z}{A} E^{(1)} \partial_v f^{(1)} \right]  + \frac{1}{2} \left[ v \partial_x f^{(2)} + (\omega_c \tau) \frac{Z}{A} E^{(2)} \partial_v f^{(2)} \right] \right)  \\
+            &\qquad \qquad + \Delta t \left( \frac{1}{2} Q(f^{(1)}) + \frac{1}{2} Q(f^{(2)}) \right) 
+\end{align*}
 
 \subsection{Robust conservative DLR scheme}
 

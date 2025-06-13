@@ -11,12 +11,15 @@ import jax
 import jax.numpy as jnp
 from pydantic import BaseModel, Field
 from tesseract_core.runtime import Differentiable, Float64
+import mlflow
 
 from tesseract_core.runtime.tree_transforms import filter_func, flatten_with_paths
 
 from spscml.sheath_interface import SheathInputSchema, SheathOutputSchema
-from spscml.fulltensor_vfp.sheath_model import calculate_plasma_current
+from spscml.fulltensor_vfp.sheath_model import make_plasma, reduced_mfp_for_sim, calculate_plasma_current
 from spscml.utils import first_moment
+from spscml.normalization import plasma_norm
+from spscml.plasma import TwoSpeciesPlasma
 
 import matplotlib.pyplot as plt
 
@@ -53,8 +56,14 @@ class OutputSchema(SheathOutputSchema):
 # take/return a single pytree as an input/output conforming respectively
 # to Input/OutputSchema
 @eqx.filter_jit
-def apply_jit(inputs: dict) -> dict:
+def apply_helper(inputs: dict) -> dict:
     return calculate_plasma_current(**inputs)
+
+
+@eqx.filter_jit
+def apply_jit(inputs: dict) -> dict:
+    out = apply_helper(inputs)
+    return dict(Ip=out["Ip"])
 
 
 def apply(inputs: InputSchema) -> OutputSchema:
@@ -65,23 +74,33 @@ def apply(inputs: InputSchema) -> OutputSchema:
     # Pre-processing should not modify any input that could impact the
     # differentiable outputs in a nonlinear way (a constant shift
     # should be safe)
+    norm = plasma_norm(inputs.T, inputs.n)
+    plasma = make_plasma(norm)
+    sim_mfp = reduced_mfp_for_sim(norm, inputs.Lz)
+    inputs = inputs.model_dump()
 
-    out = apply_jit(inputs.model_dump())
+    with mlflow.start_run(run_name="Sheath solve",
+                          parent_run_id=inputs["mlflow_parent_run_id"]) as mlflow_run:
+        for param in ["Vp", "T", "Lz"]:
+            mlflow.log_param(param, inputs[param])
+        mlflow.log_param("n_vol", inputs["n"])
+        mlflow.log_param("n_linear", inputs["N"])
+        mlflow.log_param("sim_mfp", sim_mfp)
+        mlflow.log_param("Ae", plasma.Ae)
+        mlflow.log_param("Ai", plasma.Ai)
+        mlflow.log_param("Ze", plasma.Ze)
+        mlflow.log_param("Zi", plasma.Zi)
 
-    fig, axes = plt.subplots(4, 1, figsize=(10, 8))
-    
-    axes[0].imshow(out["fe"].T, origin='lower')
-    axes[1].imshow(out["fi"].T, origin='lower')
-    axes[2].plot(out["je"] + out["ji"], label="Current density")
-    axes[3].plot(out["ni"])
-    jax.debug.print("ni sum: {}", jnp.sum(out["ni"]))
+        out = apply_helper(inputs)
 
-    plt.show()
+        mlflow.log_figure(f_plots(norm, inputs, plasma, out), "plots/f.png")
+        mlflow.log_figure(jE_plots(norm, inputs, plasma, out), "plots/jE.png")
 
     # Optional: Insert any post-processing that doesn't require tracing
     # For example, you might want to save to disk or modify a non-differentiable
     # output. Again, do not modify any differentiable output in a non-linear way.
     return dict(Ip=out["Ip"])
+
 
 
 #
@@ -194,3 +213,43 @@ def vjp_jit(
         filtered_apply, flatten_with_paths(inputs, include_paths=vjp_inputs)
     )
     return vjp_func(cotangent_vector)[0]
+
+
+def f_plots(norm, inputs, plasma, out):
+    v0 = norm["v0"]
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+    Lz = inputs["Lz"]
+    vte = jnp.sqrt(1.0 / plasma.Ae) * v0
+    vti = jnp.sqrt(1.0 / plasma.Ai) * v0
+    axes[0].imshow(out["fe"].T, origin='lower', extent=(-Lz/2, Lz/2, -6*vte.magnitude, 6*vte.magnitude))
+    axes[0].set_aspect('auto')
+    axes[0].set_title("$f_e$")
+    axes[0].set_ylabel("$v [m/s]$")
+
+    axes[1].imshow(out["fi"].T, origin='lower', extent=(-Lz/2, Lz/2, -6*vti.magnitude, 6*vti.magnitude))
+    axes[1].set_aspect('auto')
+    axes[1].set_title("$f_i$")
+    axes[1].set_xlabel("$x / \\lambda_D$")
+    axes[1].set_ylabel("$v [m/s]$")
+
+    plt.tight_layout()
+
+    return fig
+
+
+def jE_plots(norm, inputs, plasma, out):
+    v0 = norm["v0"]
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+    Lz = inputs["Lz"]
+    axes[0].plot(out["E"])
+
+    axes[1].plot(out["je"], label='je')
+    axes[1].plot(out["ji"], label='ji')
+    axes[1].plot(out["je"] + out["ji"], label='j')
+    axes[1].legend()
+
+    plt.tight_layout()
+
+    return fig
