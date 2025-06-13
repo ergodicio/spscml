@@ -5,7 +5,7 @@ import equinox as eqx
 from jaxtyping import PyTree
 from typing import Callable
 from functools import partial
-from diffrax import diffeqsolve, Euler, Dopri5, ODETerm, PIDController, SaveAt
+from diffrax import diffeqsolve, Euler, Dopri5, ODETerm, PIDController, RESULTS, SaveAt
 
 from ..plasma import TwoSpeciesPlasma
 from ..grids import PhaseSpaceGrid
@@ -40,11 +40,11 @@ class Solver(eqx.Module):
         self.nu_ii = nu_ii
 
 
-    def step(self, fs, dt, bcs, f0):
-        nonstiff_rhs = lambda f: self.vlasov_rhs(f, bcs, f0)
+    def step(self, t, fs, args):
+        nonstiff_rhs = lambda f: self.vlasov_rhs(f, args["bcs"], args["f0"])
         stiff_rhs = self.explicit_collisions_rhs
         stiff_implicit_solver = self.implicit_collisions
-        return imex_ssp2(fs, nonstiff_rhs, stiff_rhs, stiff_implicit_solver, dt)
+        return imex_ssp2(fs, nonstiff_rhs, stiff_rhs, stiff_implicit_solver, args["dt"])
 
 
     def solve(self, dt, Nt, initial_conditions, boundary_conditions, dtmax):
@@ -53,14 +53,20 @@ class Solver(eqx.Module):
             'ion': initial_conditions['ion'](*self.grids['ion'].xv),
         }
 
-        t = 0.0
-        f = f0
-
         def onestep(i, f):
             return self.step(f, dt, boundary_conditions, f0)
 
-        return jax.lax.fori_loop(0, Nt, onestep, f0)
-
+        return diffeqsolve(
+            terms=ODETerm(onestep),
+            solver=Stepper(),
+            t0= 0.0,
+            t1=Nt * dt,
+            max_steps= Nt + 4,
+            dt0=dt,
+            y0=f0,
+            args={"bcs": boundary_conditions, "f0": f0},
+            saveat=SaveAt(t1=True),
+        )
 
     def n(self, f, grid):
         return jnp.sum(f, axis=1) * grid.dv
@@ -224,3 +230,15 @@ class Solver(eqx.Module):
                 right = bc['right'](f[:, -2:])
 
         return jnp.concatenate([left, f, right], axis=axis)
+
+class Stepper(Euler):
+    """
+
+    :param cfg:
+    """
+
+    def step(self, terms, t0, t1, y0, args, solver_state, made_jump):
+        del solver_state, made_jump
+        y1 = terms.vf(t0, y0, args | {"dt": t1 - t0})
+        dense_info = dict(y0=y0, y1=y1)
+        return y1, None, dense_info, None, RESULTS.successful
