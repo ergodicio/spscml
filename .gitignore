@@ -12,3 +12,8 @@
 **/*.log
 **/*.aux
 **/*.dvi
+
+.ipynb_checkpoints/
+
+# MLFlow database
+mlruns
