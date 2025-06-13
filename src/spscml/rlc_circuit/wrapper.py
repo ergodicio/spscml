@@ -25,6 +25,11 @@ def solve_wdm(inputs: dict) -> dict:
     n0 = inputs['N'] / (jnp.pi * inputs['a0']**2)
     Q0 = inputs['Vc0'] * inputs['C']
 
+    jax.debug.print("Ip0 = {}", Ip0)
+    jax.debug.print("T0 = {}", T0)
+    jax.debug.print("n0 = {}", n0)
+
+
     ics = jnp.array([Q0, Ip0, T0, n0])
 
     dt = inputs['dt']
@@ -34,13 +39,13 @@ def solve_wdm(inputs: dict) -> dict:
         #@jax.custom_jvp
         def sheath_solve(Vp, T, n):
             tx_inputs = dict(Vp=jnp.array(Vp),
-                             N=jnp.array(inputs['N']),
                              n=jnp.array(n),
                              T=jnp.array(T),
                              Lz=Lz)
-            result = apply_tesseract(tx, tx_inputs)['Ip']
-            jax.debug.print("Vp = {}, N={}, T={}, n={}, Ip = {}", Vp, inputs['N'], T, n, result)
-            return result
+            j = apply_tesseract(tx, tx_inputs)['j']
+            Ip = j * inputs['N'] / n
+            jax.debug.print("Vp = {}, N={}, T={}, n={}, Ip = {}", Vp, inputs['N'], T, n, Ip)
+            return Ip
 
 
         # The argument order is correct: https://docs.jax.dev/en/latest/advanced-autodiff.html#jax-custom-jvp-with-nondiff-argnums

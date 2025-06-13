@@ -28,21 +28,23 @@ Lp_prime = Lp / Lz
 L_tot = L - Lp
 
 # Use the initial plasma from Fig 7 of Shumlak et al. (2012) as an example
-a0 = 0.01
-n0 = 6e22
-N = n0 * (jnp.pi*a0**2)
-Ip0 = -5e4
-
 with Tesseract.from_tesseract_api(sheath_tesseract_api) as sheath_tx:
-    Vp0 = 300 * (1 - 1e-6)
-    N = 1e18
-    Ip = sheath_tx.apply(dict(
-        N=N, n=n0, T=200.0, Vp=Vp0, Lz=0.5
-        ))["Ip"]
-    print("Ip = ", Ip)
-    j = Ip * (n0 / N)
-    N_eq = (ureg.mu0 * (Ip*ureg.A)**2 / (2 * 8*jnp.pi * 20.0*ureg.eV)).to(ureg.m**-1).magnitude
+    Vp0 = 300
+    N = 9.925631819044477e+18
+    n0 = 6e22
+    T0 = 20.0
+    j = sheath_tx.apply(dict(
+        N=N, n=n0, T=T0, Vp=Vp0, Lz=0.5
+        ))["j"]
+    print("j = ", j)
+
+    N_eq = ((8*jnp.pi * T0*ureg.eV * (n0*ureg.m**-3)**2) / (ureg.mu0 * (j * ureg.A * ureg.m**-2)**2)).to(ureg.m**-1)
     print("N_eq = ", N_eq)
 
     a0 = (N_eq / n0 / jnp.pi)**0.5
+
+    j = sheath_tx.apply(dict(
+        N=N_eq, n=n0, T=T0, Vp=Vp0, Lz=0.5
+        ))["j"]
+    print("j = ", j)
 

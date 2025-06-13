@@ -63,7 +63,7 @@ def apply_helper(inputs: dict) -> dict:
 @eqx.filter_jit
 def apply_jit(inputs: dict) -> dict:
     out = apply_helper(inputs)
-    return dict(Ip=out["Ip"])
+    return dict(j=out["j_avg"])
 
 
 def apply(inputs: InputSchema) -> OutputSchema:
@@ -84,7 +84,6 @@ def apply(inputs: InputSchema) -> OutputSchema:
         for param in ["Vp", "T", "Lz"]:
             mlflow.log_param(param, inputs[param])
         mlflow.log_param("n_vol", inputs["n"])
-        mlflow.log_param("n_linear", inputs["N"])
         mlflow.log_param("sim_mfp", sim_mfp)
         mlflow.log_param("Ae", plasma.Ae)
         mlflow.log_param("Ai", plasma.Ai)
@@ -99,7 +98,7 @@ def apply(inputs: InputSchema) -> OutputSchema:
     # Optional: Insert any post-processing that doesn't require tracing
     # For example, you might want to save to disk or modify a non-differentiable
     # output. Again, do not modify any differentiable output in a non-linear way.
-    return dict(Ip=out["Ip"])
+    return dict(j=out["j_avg"])
 
 
 

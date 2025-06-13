@@ -27,7 +27,7 @@ def reduced_mfp_for_sim(norm, Lz):
 
 
 @jax.jit
-def calculate_plasma_current(Vp, T, n, N, Lz, **kwargs):
+def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
     '''
     Calculates the plasma current carried by a plasma with the given temperature and
     number density across an electrode gap at the given voltage.
@@ -36,10 +36,9 @@ def calculate_plasma_current(Vp, T, n, N, Lz, **kwargs):
         - Vp: The electrode gap voltage [volts]
         - T: The plasma temperature [eV]
         - n: The plasma volumetric number density [m^-3]
-        - N: The plasma linear number density [m^-1]
 
     returns:
-        - Ip: The space-averaged current [amperes]
+        - j: The space-averaged current density [amperes / m^2]
     '''
     norm = plasma_norm(T, n)
     ureg = norm["ureg"]
@@ -107,18 +106,19 @@ def calculate_plasma_current(Vp, T, n, N, Lz, **kwargs):
     ni = zeroth_moment(result['ion'], ion_grid)
     Ti = temperature(result['ion'], plasma.Ai, ion_grid)
 
-    Ip = (j_avg * norm["j0"] * (N / n) * ureg.m**2).to(ureg.amperes)
+    j_avg = (j_avg * norm["j0"]).to(ureg.amperes / ureg.m**2).magnitude
+    jax.debug.print("j = {}", j_avg)
 
     E = poisson_solve(x_grid, plasma, plasma.Zi*ni+plasma.Ze*ne, boundary_conditions)
 
     return dict(
-            Ip=Ip.magnitude,
             fe=result['electron'],
             fi=result['ion'],
             ion_grid=ion_grid,
             electron_grid=electron_grid,
             je=je,
             ji=ji,
+            j_avg=j_avg,
             E=E,
             ni=ni,
             )
