@@ -29,12 +29,11 @@ L_tot = L - Lp
 
 # Use the initial plasma from Fig 7 of Shumlak et al. (2012) as an example
 n0 = 6e22 * ureg.m**-3
-Ip0 = -5e4
 
 Z = 1.0
 
 with Tesseract.from_image("vlasov_sheath") as sheath_tx:
-    Vp0 = 300.0 * ureg.volts
+    Vp0 = 1500.0 * ureg.volts
 
     T0 = 20.0 * ureg.eV
     j = sheath_tx.apply(dict(

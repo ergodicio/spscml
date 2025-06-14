@@ -76,7 +76,7 @@ def apply(inputs: InputSchema) -> OutputSchema:
     # should be safe)
     norm = plasma_norm(inputs.T, inputs.n)
     plasma = make_plasma(norm)
-    sim_mfp = reduced_mfp_for_sim(norm, inputs.Lz)
+    sim_mfp = reduced_mfp_for_sim(norm, plasma.Ae, inputs.Lz)
     inputs = inputs.model_dump()
 
     with mlflow.start_run(run_name="Sheath solve",

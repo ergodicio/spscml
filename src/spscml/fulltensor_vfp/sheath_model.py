@@ -19,11 +19,13 @@ def make_plasma(norm):
                             Ai=1.0, Ae=0.04, Zi=1.0, Ze=-1.0)
 
 
-def reduced_mfp_for_sim(norm, Lz):
+def reduced_mfp_for_sim(norm, Ae, Lz):
     interelectrode_gap = Lz * norm["ureg"].m
     mfp_fraction = ((0.75*Lz_LAMBDA_D * norm["lambda_D"]) / interelectrode_gap).to('').magnitude
-    sim_mfp = mfp_fraction * (norm["lambda_mfp"] / norm["lambda_D"]).to('').magnitude
+    sim_mfp = mfp_fraction * (norm["lambda_mfp_spitzer"] / norm["lambda_D"]).to('').magnitude
+    #sim_mfp = sim_mfp * (Ae * 1836)**0.5
     return sim_mfp
+    return Lz_LAMBDA_D / 4
 
 
 @jax.jit
@@ -45,8 +47,7 @@ def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
 
     Vp = (Vp * ureg.volt / norm["V0"]).magnitude
     plasma = make_plasma(norm)
-    sim_mfp = reduced_mfp_for_sim(norm, Lz)
-
+    sim_mfp = reduced_mfp_for_sim(norm, plasma.Ae, Lz)
 
     Te = 1.0
     Ti = 1.0
@@ -54,7 +55,7 @@ def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
     vte = jnp.sqrt(Te / plasma.Ae)
     vti = jnp.sqrt(Ti / plasma.Ai)
 
-    Nx = 256
+    Nx = Lz_LAMBDA_D*2
     x_grid = Grid(Nx, Lz_LAMBDA_D)
     ion_grid = x_grid.extend_to_phase_space(6*vti, 64)
     electron_grid = x_grid.extend_to_phase_space(6*vte, 64)
