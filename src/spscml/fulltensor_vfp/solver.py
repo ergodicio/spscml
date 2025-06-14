@@ -16,7 +16,6 @@ from ..utils import zeroth_moment, first_moment, second_moment
 from .dougherty import lbo_operator_ij, species_info, lbo_operator_ij_L_diagonals
 
 class Solver(eqx.Module):
-    norm: dict
     plasma: TwoSpeciesPlasma
     grids: PyTree
     flux_source_enabled: bool
@@ -28,12 +27,10 @@ class Solver(eqx.Module):
     """
     def __init__(self,
                  plasma: TwoSpeciesPlasma, 
-                 norm,
                  grids,
                  flux_source_enabled,
                  nu_ee, nu_ii):
         self.plasma = plasma
-        self.norm = norm
         self.grids = grids
         self.flux_source_enabled = flux_source_enabled
         self.nu_ee = nu_ee
@@ -53,20 +50,18 @@ class Solver(eqx.Module):
             'ion': initial_conditions['ion'](*self.grids['ion'].xv),
         }
 
-        def onestep(i, f):
-            return self.step(f, dt, boundary_conditions, f0)
-
-        return diffeqsolve(
-            terms=ODETerm(onestep),
+        solution = diffeqsolve(
+            terms=ODETerm(self.step),
             solver=Stepper(),
             t0= 0.0,
             t1=Nt * dt,
             max_steps= Nt + 4,
             dt0=dt,
             y0=f0,
-            args={"bcs": boundary_conditions, "f0": f0},
+            args={"bcs": boundary_conditions, "f0": f0, "dt": dt},
             saveat=SaveAt(t1=True),
         )
+        return jax.tree.map(lambda fs: fs[0, ...], solution.ys)
 
     def n(self, f, grid):
         return jnp.sum(f, axis=1) * grid.dv

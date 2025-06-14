@@ -89,7 +89,6 @@ def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
     nu_ii = vti / sim_mfp
 
     solver = Solver(plasma, 
-                    norm,
                     {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid},
                     flux_source_enabled=True, nu_ee=nu_ee, nu_ii=nu_ii)
 
