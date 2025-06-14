@@ -36,10 +36,6 @@ def lbo_operator_ij(species_i, species_j, norm):
 
     lambda_ij = mixture_moments["lambda"]
 
-    #jax.debug.print("{}, {}: CFL: {}", 
-                    #species_i["name"], species_j["name"],
-                    #1e2 * lambda_ij[0] * theta_ij[0] / grid.dv**2)
-
     return lambda_ij[:, None] * theta_ij * (drift + diffusion[:, 1:-1])
 
 
@@ -66,9 +62,6 @@ def lbo_operator_ij_L_diagonals(species_i, mixture_moments):
     dl = jnp.append(jnp.array([0.]), a_ks[1:]) / grid.dv**2
     d = -b_ks / grid.dv**2
     du = jnp.append(c_ks[:-1], jnp.array([0.])) / grid.dv**2
-    print(dl.shape)
-    print(d.shape)
-    print(du.shape)
 
     lambda_ij = mixture_moments["lambda"]
     fac = lambda_ij * theta_ij
