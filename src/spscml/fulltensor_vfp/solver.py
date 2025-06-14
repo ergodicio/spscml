@@ -168,10 +168,10 @@ class Solver(eqx.Module):
     def collision_frequency_shape_func(self):
         L = self.grids['x'].Lx
 
-        midpt = L/3
+        midpt = L/4
         # Want 10 e-foldings between the midpoint (2/3rds of the way to the sheath)
         # and the wall
-        efolding_dist = (L/6)/10
+        efolding_dist = (midpt/2)/20
         x = self.grids['x'].xs
         h0 = lambda x: 1 + jnp.exp((x/efolding_dist) - midpt/efolding_dist)
         h = 1 / (0.5 * (h0(x) + h0(-x)))

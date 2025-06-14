@@ -41,8 +41,6 @@ def plasma_norm(T, n):
     # Debye length
     lambda_mfp = (vtp / nu_p).to(ureg.m)
 
-    jax.debug.print("lambda_mfp: {}", lambda_mfp)
-
     vA = v0
     B0 = ((vA**2 * ureg.m_p * n0 * ureg.mu_0)**0.5).to(ureg.tesla)
 
@@ -58,9 +56,16 @@ def plasma_norm(T, n):
     V0 = E0 * L
     j0 = n0 * v0 * ureg.e
 
+    nu_ei_spitzer = (eta_spitzer / ureg.m_e * n0 * ureg.e**2).to('1/s')
+    lambda_mfp_spitzer = ((T0 / ureg.m_e)**0.5 / nu_ei_spitzer).to('m')
+    jax.debug.print("lambda_mfp: {}", lambda_mfp_spitzer)
+
+
     return dict(
         ureg=ureg, T0=T0, n0=n0, v0=v0, L=L, tau=tau, E0=E0, V0=V0, j0=j0,
         omega_p_tau=omega_p_tau, omega_c_tau=omega_c_tau, nu_p_tau=nu_p_tau,
+        nu_ei_spitzer=nu_ei_spitzer,
+        lambda_mfp_spitzer=lambda_mfp_spitzer,
         xi_proton_proton=xi_proton_proton,
         lambda_mfp=lambda_mfp, lambda_D=lambda_D,
     )

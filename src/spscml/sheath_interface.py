@@ -12,9 +12,6 @@ class SheathInputSchema(BaseModel):
     n: Differentiable[Float64] = Field(
             description="Plasma volumetric density; n_e = n_i = n [meters^-3]"
     )
-    N: Differentiable[Float64] = Field(
-            description="Plasma linear density; N_e = N_i = N [meters^-1]"
-    )
     Lz: Differentiable[Float64] = Field(
             description="Inter-electrode length [meters]"
     )
@@ -26,8 +23,8 @@ class SheathInputSchema(BaseModel):
 
 
 class SheathOutputSchema(BaseModel):
-    Ip: Differentiable[Float64] = Field(
-            description="Plasma current [amperes]"
+    j: Differentiable[Float64] = Field(
+            description="Plasma current density [amperes / m^2]"
     )
 
 

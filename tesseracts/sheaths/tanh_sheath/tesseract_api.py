@@ -31,18 +31,18 @@ def apply(inputs: InputSchema) -> OutputSchema:
 def apply_jit(inputs: dict) -> dict:
     Vp = inputs["Vp"] * ureg.V
     T = inputs["T"] * ureg.eV
-    N = inputs["N"] * (ureg.m**-1)
+    n = inputs["n"] * (ureg.m**-3)
 
-    # Compute the saturation current I = 0.5 * e * N * c_S
+    # Compute the saturation current I = 0.5 * e * n * c_S
     gamma = 5/3
     c_S = ((2*gamma*T / ureg.m_p)**0.5).to(ureg.m / ureg.s)
-    Ip_sat = 0.5 * ureg.e * N * c_S
+    j_sat = 0.5 * ureg.e * n * c_S
 
     alpha = (Vp * ureg.e / T).to('').magnitude
 
-    Ip = -jnp.tanh(alpha) * Ip_sat
+    j = -jnp.tanh(alpha) * j_sat
 
-    result = dict(Ip=Ip.to(ureg.ampere).magnitude)
+    result = dict(j=j.to(ureg.ampere / ureg.m**2).magnitude)
     return result
 
 

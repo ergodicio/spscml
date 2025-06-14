@@ -28,38 +28,31 @@ Lp_prime = Lp / Lz
 L_tot = L - Lp
 
 # Use the initial plasma from Fig 7 of Shumlak et al. (2012) as an example
-a0 = 0.01
-n0 = 6e22
-N = n0 * (jnp.pi*a0**2)
-Ip0 = -5e4
+n0 = 6e22 * ureg.m**-3
+
+Z = 1.0
 
 with Tesseract.from_image("vlasov_sheath") as sheath_tx:
-    Vp0 = 300.0
-    N = 1e18
-    T0 = 20.0
-    """
-    Ip = sheath_tx.apply(dict(
-        N=N, n=n0, T=T0, Vp=Vp0, Lz=0.5
-        ))["Ip"]
-    """
-    Ip_prospective = -3593.5286319923143
-    print("Ip_prospective = ", Ip_prospective)
-    j = Ip_prospective * (n0 / N) * ureg.A * ureg.m**-2
+    Vp0 = 1500.0 * ureg.volts
 
-    N_actual = ((8*jnp.pi * T0*ureg.eV * (n0*ureg.m**-3)**2) / (ureg.mu0 * j**2)).to(ureg.m**-1).magnitude
-    print("N_actual = ", N_actual)
+    T0 = 20.0 * ureg.eV
+    j = sheath_tx.apply(dict(
+        n=n0.magnitude, T=T0.magnitude, Vp=Vp0.magnitude, Lz=0.5
+        ))["j"] * (ureg.A / ureg.m**2)
+    N = ((8*jnp.pi * (1 + Z) * T0 * n0**2) / (ureg.mu0 * j**2)).to(ureg.m**-1)
+    print("N = ", N)
 
-    Ip = (j * N_actual * ureg.m**-1 / (n0 * ureg.m**-3)).to(ureg.A).magnitude
-    print("Ip actual = ", Ip)
+    Ip = (j * N / n0).to(ureg.A)
+    print("Ip = ", Ip)
 
-    a0 = (N_actual / n0 / jnp.pi)**0.5
+    a0 = ((N / n0 / jnp.pi)**0.5).to(ureg.m)
 
     with Tesseract.from_tesseract_api(tesseract_api) as tx:
         result = tx.apply(dict(
             Vc0=Vc0,
-            Ip0=Ip,
-            a0=a0,
-            N=N_actual,
+            Ip0=Ip.magnitude,
+            a0=a0.magnitude,
+            N=N.magnitude,
             Lp_prime=Lp_prime,
             Lz=Lz,
             R=R, L=L, C=C,
