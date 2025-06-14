@@ -69,8 +69,6 @@ def lbo_operator_ij_L_diagonals(species_i, mixture_moments):
     return (fac * dl, fac * d, fac * du)
 
 
-
-
 def lbo_mixture_moments(species_i, species_j, norm):
     Ai = species_i["A"]
     Zi = species_i["Z"]

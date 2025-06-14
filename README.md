@@ -28,7 +28,7 @@ This repository uses `uv` to manage python dependencies. Install it from here: h
 
 ## Tentative summer school project list
 
-- [ ] Add robust conservative DLR implementation
-- [ ] Implement electron-emission boundary conditions
-- [ ] Perform training of pre-sheath BC
-- [ ] Extend to 1D2V case with magnetic vector potential Ampere's law
+- [ ] Implement differentiable DLR version of vlasov sheath model
+- [ ] Get to end-to-end run through WDM
+- [ ] Perform training of sheath model surrogate
+- [ ] Perform end-to-end optimization via surrogate

@@ -63,6 +63,7 @@ class Solver(eqx.Module):
         )
         return jax.tree.map(lambda fs: fs[0, ...], solution.ys)
 
+
     def n(self, f, grid):
         return jnp.sum(f, axis=1) * grid.dv
 
