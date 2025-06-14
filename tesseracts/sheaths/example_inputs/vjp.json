@@ -1,6 +1,6 @@
 {
-    "inputs": {"N": 0.1, "n": 1.1e20, "T": 2e1, "Vp": 3e1, "Lz": 2.5 }, 
+    "inputs": {"n": 6e22, "T": 20.0, "Vp": 1500.0, "Lz": 0.5 }, 
     "vjp_inputs": ["Vp"], 
-    "vjp_outputs": ["Ip"], 
-    "cotangent_vector": {"Ip": 0.8}
+    "vjp_outputs": ["j"], 
+    "cotangent_vector": { "j": 5.3e6 }
 }
