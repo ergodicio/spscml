@@ -1,6 +1,6 @@
 # This is a basic workflow to help you get started with Actions
 
-name: build_and_push
+name: deploy
 
 # Controls when the action will run.
 on:
@@ -14,7 +14,7 @@ on:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  build-and-push-vlasov-sheath:
+  vlasov-sheath:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
