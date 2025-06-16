@@ -1,4 +1,4 @@
-../../../../spscml_dlr
+../../../../spscml
 jax==0.6.0
 jpu
 equinox
