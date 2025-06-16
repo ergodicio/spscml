@@ -287,7 +287,7 @@ Increasing $\nu$ lets us obtain a Maxwellian distribution in the center of the d
 The term $\Gamma_s$ is a source term localized to the center of the domain that serves to replenish particles lost to
 the absorbing wall:
 \begin{align*}
-    \Gamma_s = \left( \frac{1}{L_s} - \frac{|x|}{L_s^2} \right) F_{out} M_s(v),
+    \Gamma_s = \gamma(x) M_s(v) = \left( \frac{1}{L_s} - \frac{|x|}{L_s^2} \right) F_{out} M_s(v),
 \end{align*}
 where $F_{out}$ is the flux of \emph{ions} out of the domain:
 \begin{align*}
@@ -363,21 +363,24 @@ the form of the $\partial_x X$ terms in the S and L substeps.
 \begin{align*}
     \partial_t K_j &= -\sum_{l=1}^r \left\langle V_j, v^+ V_l \right\rangle_v D_+ K_l(x, t) - \sum_{l=1}^r \left\langle V_j, v^- V_l \right\rangle_v D_- K_l(x, t)  \\
                          &\quad - (\omega_c \tau) \frac{Z}{A} \left[ \sum_{l=1}^r \left\langle V_j, D_+ V_l \right\rangle_v E_+ K_l(x, t) + \sum_{l=1}^r \left\langle V_j, D_- V_l \right\rangle_v E_- K_l(x, t) \right] \\
-                         &\quad + \sum_{l=1}^r \nu(x) \left\langle V_j, D \left( M D \left( \frac{V_l}{M} \right) \right) \right\rangle_v K_l(x, t)
+                         &\quad + \sum_{l=1}^r \nu(x) \left\langle V_j, D \left( M D \left( \frac{V_l}{M} \right) \right) \right\rangle_v K_l(x, t) \\
+                         &\quad + \sum_{l=1}^r \gamma(x) \left\langle V_j, M V_l \right\rangle_v K_l(x, t)
 \end{align*}
 
 \textbf{S step:}
 \begin{align*}
     \partial_t S_{ij} &= \sum_{l=1}^r \left\langle V_j, v^+ V_l \right\rangle_v \left\langle X_i, D_+ K_l \right\rangle_x + \sum_{l=1}^r \left\langle V_j, v^- V_l \right\rangle_v \left\langle X_i, D_- K_l \right\rangle_x \\
                       &\quad + (\omega_c \tau) \frac{Z}{A} \left[ \sum_{k,l=1}^r \left\langle V_j, D_+ V_l \right\rangle_v \left\langle X_i, E_+ X_k \right\rangle_x S_{kl} + \sum_{k,l=1}^r \left\langle V_j, D_- V_l \right\rangle_v \left\langle X_i, E_- X_k \right\rangle_x S_{kl} \right] \\
-                      &\quad - \sum_{k,l=1}^r \left\langle V_j, D \left( M D \left( \frac{V_l}{M} \right) \right) \right\rangle_v \left\langle X_i, \nu(x) X_k \right\rangle_x S_{kl}
+                      &\quad - \sum_{k,l=1}^r \left\langle V_j, D \left( M D \left( \frac{V_l}{M} \right) \right) \right\rangle_v \left\langle X_i, \nu(x) X_k \right\rangle_x S_{kl} \\
+                      &\quad - \sum_{k,l=1}^r \left\langle V_j, M V_l \right\rangle_v \left\langle X_i, \gamma(x) X_k \right\rangle_x S_{kl}
 \end{align*}
 
 \textbf{L step:}
 \begin{align*}
     \partial_t L_i &= -\sum_{l=1}^r v^+ V_l \left\langle X_i, D_+ K_l \right\rangle_x - \sum_{l=1}^r v^- V_l \left\langle X_i, D_- K_l \right\rangle_x \\
                    &\quad - (\omega_c \tau) \frac{Z}{A} \left[ \sum_{k=1}^r \left\langle X_i, E_+ X_k \right\rangle_x D_+ L_k + \sum_{k=1}^r \left\langle X_i, E_- X_k \right\rangle_x D_- L_k  \right] \\
-                   &\quad + \sum_{k=1}^r \left\langle X_i, \nu(x) X_k \right\rangle_x D \left( M D \left( \frac{L_k}{M} \right) \right)
+                   &\quad + \sum_{k=1}^r \left\langle X_i, \nu(x) X_k \right\rangle_x D \left( M D \left( \frac{L_k}{M} \right) \right) \\
+                   &\quad + \sum_{k=1}^r \left\langle X_i, \gamma(x) X_k \right\rangle_x M(v) L_k(v, t) 
 \end{align*}
 
 
