@@ -69,10 +69,23 @@ class Solver(eqx.Module):
 
 
     def step_K(self, t, ys, args):
-        return {
-            'electron': self.step_K_single_species(t, ys['electron'], self.grids['electron'], args),
-            'ion': self.step_K_single_species(t, ys['ion'], self.grids['ion'], args),
-        }
+        K_of = lambda X, S, V: (X.T @ S).T
+
+        Ks = { 'electron': K_of(*ys['electron']), 'ion': K_of(*ys['ion']) }
+        args = {**args, 'V': {'electron': ys['electron'][2], 'ion': ys['ion'][2]}}
+
+        Ks = ssprk2(Ks, lambda K: self.K_step_nonstiff_RHS(K, args), args['dt'])
+
+        def XSV_of(K, y, grid):
+            _, _, V = y
+            Xt, S = jnp.linalg.qr(K.T)
+            return (Xt.T / grid.dx**0.5, S * grid.dx**0.5, V)
+
+        result = { 'electron': XSV_of(Ks['electron'], ys['electron'], self.grids['electron']), 
+                  'ion': XSV_of(Ks['ion'], ys['ion'], self.grids['ion']) }
+        print(result)
+        return result
+
 
 
     def step_S(self, t, ys, args):
@@ -89,6 +102,35 @@ class Solver(eqx.Module):
         }
 
 
+    def K_step_nonstiff_RHS(self, Ks, args):
+        return {
+            'electron': self.K_step_single_species_nonstiff_RHS(Ks['electron'], self.grids['electron'], {**args, 'V': args['V']['electron']}),
+            'ion': self.K_step_single_species_nonstiff_RHS(Ks['ion'], self.grids['ion'], {**args, 'V': args['V']['ion']}),
+        }
+
+
+    def K_step_single_species_nonstiff_RHS(self, K, grid, args):
+        V = args['V']
+        v = grid.vs
+        r = self.r
+        assert V.shape == (r, grid.Nv)
+
+        v_plus_matrix = V @ jnp.diag(jnp.where(v > 0, v, 0.0)) @ V.T * grid.dv
+        v_minus_matrix = V @ jnp.diag(jnp.where(v < 0, v, 0.0)) @ V.T * grid.dv
+
+        V_left_matrix = V @ jnp.concatenate([jnp.zeros((r, 1)), jnp.diff(V, axis=1) / grid.dv], axis=1).T * grid.dv
+        V_right_matrix = V @ jnp.concatenate([jnp.diff(V, axis=1) / grid.dv, jnp.zeros((r, 1))], axis=1).T * grid.dv
+        #V_collisions_matris = V @ self.apply_collisions(V, args).T * grid.dv
+
+        K_bcs = self.apply_absorbing_wall_bcs(K, V, grid, n_ghost_cells=2)
+        v_flux_func = lambda left, right: v_plus_matrix @ left + v_minus_matrix @ right
+        v_flux = slope_limited_flux_divergence(K_bcs, 'minmod', v_flux_func, grid.dx, axis=1)
+
+        # TODO: E flux and collisions
+        return -v_flux
+
+
+
     def step_K_single_species(self, t, y, grid, args):
         X, S, V = y
         v = grid.vs
@@ -97,8 +139,8 @@ class Solver(eqx.Module):
         v_plus_matrix = V @ jnp.diag(jnp.where(v > 0, v, 0.0)) @ V.T * grid.dv
         v_minus_matrix = V @ jnp.diag(jnp.where(v < 0, v, 0.0)) @ V.T * grid.dv
 
-        #V_left_matrix = V @ jnp.concatenate([jnp.zeros(r), jnp.diff(V, axis=1) / grid.dv], axis=1).T * grid.dv
-        #V_right_matrix = V @ jnp.concatenate([jnp.diff(V, axis=1) / grid.dv, jnp.zeros(r)], axis=1).T * grid.dv
+        V_left_matrix = V @ jnp.concatenate([jnp.zeros(r), jnp.diff(V, axis=1) / grid.dv], axis=1).T * grid.dv
+        V_right_matrix = V @ jnp.concatenate([jnp.diff(V, axis=1) / grid.dv, jnp.zeros(r)], axis=1).T * grid.dv
         #V_collisions_matris = V @ self.apply_collisions(V, args).T * grid.dv
 
         def K_nonstiff_rhs(K):
@@ -160,6 +202,23 @@ class Solver(eqx.Module):
         print("V shape: ", Vt.shape)
         print("s shape: ", S.shape)
         return (X, S * grid.dv**0.5, Vt.T / grid.dv**0.5)
+
+
+    def solve_poisson(self, ys, grids, bcs):
+        rho_c = self.rho_c_species(ys['electron'], plasma.Ze, grids['electron']) + \
+                self.rho_c_species(ys['ion'], plasma.Zi, grids['ion'])
+        E = poisson_solve(grids['x'], self.plasma, rho_c, bcs)
+        assert E.shape == (grids['x'].Nx,)
+        return E
+
+
+    def rho_c_species(self, y, Z, grid):
+        X, S, V = y
+
+        V_mass_vector = V @ jnp.ones(grid.Nv) * grid.dv
+        result = (X.T @ S @ V_mass_vector) * Z
+        assert result.shape == (grid.Nx,)
+        return result
 
 
     def apply_absorbing_wall_bcs(self, K, V, grid, n_ghost_cells):
