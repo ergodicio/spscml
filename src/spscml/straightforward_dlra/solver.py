@@ -9,6 +9,9 @@ from ..fulltensor_vfp.dougherty import lbo_operator_ij_L_diagonals
 from ..plasma import TwoSpeciesPlasma
 from ..rk import ssprk2
 from ..muscl import slope_limited_flux_divergence
+from ..poisson import poisson_solve
+
+SPECIES = ['electron', 'ion']
 
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
@@ -30,7 +33,7 @@ class Solver(eqx.Module):
         self.nu_ii = nu_ii
 
 
-    def solve(self, dt, Nt, initial_conditions, dtmax):
+    def solve(self, dt, Nt, initial_conditions, boundary_conditions, dtmax):
         f0 = {
             'electron': initial_conditions['electron'](*self.grids['electron'].xv),
             'ion': initial_conditions['ion'](*self.grids['ion'].xv),
@@ -44,7 +47,7 @@ class Solver(eqx.Module):
             max_steps=Nt + 4,
             dt0=dt,
             y0=f0,
-            args={"f0": f0, "dt": dt},
+            args={"f0": f0, "dt": dt, 'bcs': boundary_conditions},
             saveat=SaveAt(t1=True),
         )
         return jax.tree.map(lambda fs: fs[0, ...], solution.ys)
@@ -52,65 +55,39 @@ class Solver(eqx.Module):
 
     def step(self, t, ys, args):
         ys = self.step_K(t, ys, args)
-        #jax.debug.print("K step ion X: {}", ys['ion'][0][:, :3])
-        #jax.debug.print("K step ion S: {}", ys['ion'][1][:, :3])
-        #jax.debug.print("K step ion V: {}", ys['ion'][2][:, :3])
+        jax.debug.print("S after K: {}", ys['electron'][1][:3, :3])
         ys = self.step_S(t, ys, args)
-        #jax.debug.print("electron V: {}", ys['electron'][2])
-        #jax.debug.print("S step ion X: {}", ys['ion'][0][:, :3])
-        jax.debug.print("S step ion S: {}", ys['ion'][1][:, :3])
-        #jax.debug.print("S step ion V: {}", ys['ion'][2][:, :3])
+        jax.debug.print("S after S: {}", ys['electron'][1][:3, :3])
         ys = self.step_L(t, ys, args)
-        #jax.debug.print("electron V: {}", ys['electron'][2])
-        #jax.debug.print("L step ion X: {}", ys['ion'][0][:, :3])
-        #jax.debug.print("L step ion S: {}", ys['ion'][1][:, :3])
-        #jax.debug.print("L step ion V: {}", ys['ion'][2][:, :3])
+        jax.debug.print("S after L: {}", ys['electron'][1][:3, :3])
         return ys
 
 
     def step_K(self, t, ys, args):
+        E = self.solve_poisson(ys, self.grids, args['bcs'])
+        As = {'electron': self.plasma.Ae, 'ion': self.plasma.Ai}
+        Zs = {'electron': self.plasma.Ze, 'ion': self.plasma.Zi}
+
         K_of = lambda X, S, V: (X.T @ S).T
 
-        Ks = { 'electron': K_of(*ys['electron']), 'ion': K_of(*ys['ion']) }
-        args = {**args, 'V': {'electron': ys['electron'][2], 'ion': ys['ion'][2]}}
-
-        Ks = ssprk2(Ks, lambda K: self.K_step_nonstiff_RHS(K, args), args['dt'])
+        Ks = ssprk2({ sp: K_of(*ys[sp]) for sp in SPECIES },
+                    lambda Ks: {
+                        sp: self.K_step_single_species_nonstiff_RHS(Ks[sp], self.grids[sp],
+                                                                    {**args, 'V': ys[sp][2], 'E': E, 
+                                                                     'Z': Zs[sp], 'A': As[sp]})
+                        for sp in SPECIES},
+                    args['dt'])
 
         def XSV_of(K, y, grid):
             _, _, V = y
             Xt, S = jnp.linalg.qr(K.T)
             return (Xt.T / grid.dx**0.5, S * grid.dx**0.5, V)
 
-        result = { 'electron': XSV_of(Ks['electron'], ys['electron'], self.grids['electron']), 
-                  'ion': XSV_of(Ks['ion'], ys['ion'], self.grids['ion']) }
-        print(result)
-        return result
-
-
-
-    def step_S(self, t, ys, args):
-        return {
-            'electron': self.step_S_single_species(t, ys['electron'], self.grids['electron'], args),
-            'ion': self.step_S_single_species(t, ys['ion'], self.grids['ion'], args),
-        }
-
-
-    def step_L(self, t, ys, args):
-        return {
-            'electron': self.step_L_single_species(t, ys['electron'], self.grids['electron'], args),
-            'ion': self.step_L_single_species(t, ys['ion'], self.grids['ion'], args),
-        }
-
-
-    def K_step_nonstiff_RHS(self, Ks, args):
-        return {
-            'electron': self.K_step_single_species_nonstiff_RHS(Ks['electron'], self.grids['electron'], {**args, 'V': args['V']['electron']}),
-            'ion': self.K_step_single_species_nonstiff_RHS(Ks['ion'], self.grids['ion'], {**args, 'V': args['V']['ion']}),
-        }
+        return { sp: XSV_of(Ks[sp], ys[sp], self.grids[sp]) for sp in SPECIES }
 
 
     def K_step_single_species_nonstiff_RHS(self, K, grid, args):
-        V = args['V']
+        V, E = args['V'], args['E']
         v = grid.vs
         r = self.r
         assert V.shape == (r, grid.Nv)
@@ -119,94 +96,127 @@ class Solver(eqx.Module):
         v_minus_matrix = V @ jnp.diag(jnp.where(v < 0, v, 0.0)) @ V.T * grid.dv
 
         V_left_matrix = V @ jnp.concatenate([jnp.zeros((r, 1)), jnp.diff(V, axis=1) / grid.dv], axis=1).T * grid.dv
+        E_plus = jnp.atleast_2d(jnp.where(E > 0, E, 0.0))
         V_right_matrix = V @ jnp.concatenate([jnp.diff(V, axis=1) / grid.dv, jnp.zeros((r, 1))], axis=1).T * grid.dv
-        #V_collisions_matris = V @ self.apply_collisions(V, args).T * grid.dv
+        E_minus = jnp.atleast_2d(jnp.where(E < 0, E, 0.0))
+        #V_collisions_matrix = V @ self.apply_collisions(V, args).T * grid.dv
 
         K_bcs = self.apply_absorbing_wall_bcs(K, V, grid, n_ghost_cells=2)
         v_flux_func = lambda left, right: v_plus_matrix @ left + v_minus_matrix @ right
         v_flux = slope_limited_flux_divergence(K_bcs, 'minmod', v_flux_func, grid.dx, axis=1)
 
-        # TODO: E flux and collisions
-        return -v_flux
+        fac = self.plasma.omega_c_tau * args['Z'] / args['A']
+        E_flux = fac * (V_left_matrix @ (K * E_plus) + V_right_matrix @ (K * E_minus))
+
+        # TODO: collisions
+        return -v_flux - E_flux
 
 
 
-    def step_K_single_species(self, t, y, grid, args):
-        X, S, V = y
+    def step_S(self, t, ys, args):
+        E = self.solve_poisson(ys, self.grids, args['bcs'])
+        As = {'electron': self.plasma.Ae, 'ion': self.plasma.Ai}
+        Zs = {'electron': self.plasma.Ze, 'ion': self.plasma.Zi}
+        
+        S_of = lambda X, S, V: S
+
+        Ss = ssprk2({ sp: S_of(*ys[sp]) for sp in SPECIES }, 
+                    lambda Ss: { 
+                                sp: self.S_step_single_species_nonstiff_RHS(Ss[sp], self.grids[sp], 
+                                                                            {**args, 'X': ys[sp][0], 'V': ys[sp][2], 'E': E,
+                                                                             'Z': Zs[sp], 'A': As[sp]}) 
+                                for sp in SPECIES}, 
+                    args['dt'])
+
+        def XSV_of(S, y):
+            X, _, V = y
+            return (X, S, V)
+        return { sp: XSV_of(Ss[sp], ys[sp]) for sp in SPECIES }
+
+
+    def S_step_single_species_nonstiff_RHS(self, S, grid, args):
+        X, V, E = args['X'], args['V'], args['E']
         v = grid.vs
         r = self.r
 
         v_plus_matrix = V @ jnp.diag(jnp.where(v > 0, v, 0.0)) @ V.T * grid.dv
         v_minus_matrix = V @ jnp.diag(jnp.where(v < 0, v, 0.0)) @ V.T * grid.dv
 
-        V_left_matrix = V @ jnp.concatenate([jnp.zeros(r), jnp.diff(V, axis=1) / grid.dv], axis=1).T * grid.dv
-        V_right_matrix = V @ jnp.concatenate([jnp.diff(V, axis=1) / grid.dv, jnp.zeros(r)], axis=1).T * grid.dv
-        #V_collisions_matris = V @ self.apply_collisions(V, args).T * grid.dv
+        K = self.apply_absorbing_wall_bcs((X.T @ S).T, V, grid, n_ghost_cells=1)
+        K_diff_left = jnp.diff(K[:, :-1], axis=1) / grid.dx
+        K_left_matrix = X @ K_diff_left.T * grid.dx
+        K_diff_right = jnp.diff(K[:, 1:], axis=1) / grid.dx
+        K_right_matrix = X @ K_diff_right.T * grid.dx
 
-        def K_nonstiff_rhs(K):
-            K_bcs = self.apply_absorbing_wall_bcs(K, V, grid, n_ghost_cells=2)
-            v_flux_func = lambda left, right: v_plus_matrix @ left + v_minus_matrix @ right
-            v_flux = slope_limited_flux_divergence(K_bcs, 'minmod', v_flux_func, grid.dx, axis=1)
+        v_term = K_left_matrix @ v_plus_matrix.T + K_right_matrix @ v_minus_matrix.T
 
-            # TODO: E flux and collisions
-            return -v_flux
+        V_left_matrix = V @ jnp.concatenate([jnp.zeros((r, 1)), jnp.diff(V, axis=1) / grid.dv], axis=1).T * grid.dv
+        E_plus_matrix = X @ jnp.diag(jnp.where(E > 0, E, 0.0)) @ X.T * grid.dx
+        V_right_matrix = V @ jnp.concatenate([jnp.diff(V, axis=1) / grid.dv, jnp.zeros((r, 1))], axis=1).T * grid.dv
+        E_minus_matrix = X @ jnp.diag(jnp.where(E < 0, E, 0.0)) @ X.T * grid.dx
 
-        K = ssprk2((X.T @ S).T, K_nonstiff_rhs, args['dt'])
-        Xt, S = jnp.linalg.qr(K.T)
-        return (Xt.T / grid.dx**0.5, S * grid.dx**0.5, V)
+        fac = self.plasma.omega_c_tau * args['Z'] / args['A']
+        E_term = fac * (E_plus_matrix @ S @ V_left_matrix.T + E_minus_matrix @ S @ V_right_matrix.T)
+
+        return v_term + E_term
 
 
-    def step_S_single_species(self, t, y, grid, args):
-        X, S, V = y
+    def step_L(self, t, ys, args):
+        E = self.solve_poisson(ys, self.grids, args['bcs'])
+        As = {'electron': self.plasma.Ae, 'ion': self.plasma.Ai}
+        Zs = {'electron': self.plasma.Ze, 'ion': self.plasma.Zi}
+
+        L_of = lambda X, S, V: S @ V
+        
+        Ls = ssprk2({ sp: L_of(*ys[sp]) for sp in SPECIES },
+                    lambda Ls: {
+                        sp: self.L_step_single_species_nonstiff_RHS(Ls[sp], self.grids[sp],
+                                                                    {**args, 'X': ys[sp][0], 'E': E,
+                                                                     'Z': Zs[sp], 'A': As[sp]})
+                        for sp in SPECIES},
+                    args['dt'])
+
+        def XSV_of(L, y, grid):
+            X, _, _ = y
+            (Vt, S) = jnp.linalg.qr(L.T)
+            return (X, S * grid.dv**0.5, Vt.T / grid.dv**0.5)
+
+        return { sp: XSV_of(Ls[sp], ys[sp], self.grids[sp]) for sp in SPECIES }
+
+
+    def L_step_single_species_nonstiff_RHS(self, L, grid, args):
+        X, E = args['X'], args['E']
         v = grid.vs
         r = self.r
 
-        v_plus_matrix = V @ jnp.diag(jnp.where(v > 0, v, 0.0)) @ V.T * grid.dv
-        v_minus_matrix = V @ jnp.diag(jnp.where(v < 0, v, 0.0)) @ V.T * grid.dv
+        Vt, S = jnp.linalg.qr(L.T)
+        S = S * grid.dv**0.5
+        V = Vt.T / grid.dv**0.5
 
-        def S_nonstiff_rhs(S):
-            K = self.apply_absorbing_wall_bcs((X.T @ S).T, V, grid, n_ghost_cells=1)
-            K_diff_left = jnp.diff(K[:, :-1], axis=1) / grid.dx
-            K_left_matrix = X @ K_diff_left.T * grid.dx
-            K_diff_right = jnp.diff(K[:, 1:], axis=1) / grid.dx
-            K_right_matrix = X @ K_diff_right.T * grid.dx
+        K = self.apply_absorbing_wall_bcs((X.T @ S).T, V, grid, n_ghost_cells=1)
+        K_diff_left = jnp.diff(K[:, :-1], axis=1) / grid.dx
+        K_left_matrix = X @ K_diff_left.T * grid.dx
+        K_diff_right = jnp.diff(K[:, 1:], axis=1) / grid.dx
+        K_right_matrix = X @ K_diff_right.T * grid.dx
+        
+        v_plus = jnp.where(v > 0, v, 0.0)
+        v_minus = jnp.where(v < 0, v, 0.0)
+        v_flux = jnp.atleast_2d(v_plus) * (K_left_matrix @ V) + jnp.atleast_2d(v_minus) * (K_right_matrix @ V)
+        
+        fac = self.plasma.omega_c_tau * args['Z'] / args['A']
+        E_plus_matrix = X @ jnp.diag(jnp.where(fac*E > 0, fac*E, 0.0)) @ X.T * grid.dx
+        E_minus_matrix = X @ jnp.diag(jnp.where(fac*E < 0, fac*E, 0.0)) @ X.T * grid.dx
+        L_bcs = jnp.pad(L, [(0, 0), (2, 2)], mode='empty')
+        E_flux_func = lambda left, right: E_plus_matrix @ left + E_minus_matrix @ right
 
-            return K_left_matrix @ v_plus_matrix.T + K_right_matrix @ v_minus_matrix.T
+        E_flux = slope_limited_flux_divergence(L_bcs, 'minmod', E_flux_func, grid.dv, axis=1)
 
-        S = ssprk2(S, S_nonstiff_rhs, args['dt'])
-        return (X, S, V)
-
-
-    def step_L_single_species(self, t, y, grid, args):
-        X, S, V = y
-        v = grid.vs
-        r = self.r
-
-        def L_nonstiff_rhs(L):
-            Vt, S = jnp.linalg.qr(L.T)
-            S = S * grid.dv**0.5
-            V = Vt.T / grid.dv**0.5
-
-            K = self.apply_absorbing_wall_bcs((X.T @ S).T, V, grid, n_ghost_cells=1)
-            K_diff_left = jnp.diff(K[:, :-1], axis=1) / grid.dx
-            K_left_matrix = X @ K_diff_left.T * grid.dx
-            K_diff_right = jnp.diff(K[:, 1:], axis=1) / grid.dx
-            K_right_matrix = X @ K_diff_right.T * grid.dx
-            
-            v_plus = jnp.where(v > 0, v, 0.0)
-            v_minus = jnp.where(v < 0, v, 0.0)
-            return -jnp.atleast_2d(v_plus) * (K_left_matrix @ V) - jnp.atleast_2d(v_minus) * (K_right_matrix @ V)
-
-        L = ssprk2(S @ V, L_nonstiff_rhs, args['dt'])
-        (Vt, S) = jnp.linalg.qr(L.T)
-        print("V shape: ", Vt.shape)
-        print("s shape: ", S.shape)
-        return (X, S * grid.dv**0.5, Vt.T / grid.dv**0.5)
+        return -v_flux - E_flux
 
 
     def solve_poisson(self, ys, grids, bcs):
-        rho_c = self.rho_c_species(ys['electron'], plasma.Ze, grids['electron']) + \
-                self.rho_c_species(ys['ion'], plasma.Zi, grids['ion'])
+        rho_c = self.rho_c_species(ys['electron'], self.plasma.Ze, grids['electron']) + \
+                self.rho_c_species(ys['ion'], self.plasma.Zi, grids['ion'])
         E = poisson_solve(grids['x'], self.plasma, rho_c, bcs)
         assert E.shape == (grids['x'].Nx,)
         return E

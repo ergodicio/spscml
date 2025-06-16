@@ -27,8 +27,9 @@ plasma = TwoSpeciesPlasma(1.0, 1.0, 0.0, Ai, Ae, 1.0, -1.0)
 x_grid = Grid(200, 100)
 ion_grid = x_grid.extend_to_phase_space(6*vti, 150)
 electron_grid = x_grid.extend_to_phase_space(6*vte, 150)
+grids = {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid}
 
-r = 20
+r = 16
 def lowrank_factors(f, grid):
     X, S, V = jnp.linalg.svd(f, full_matrices=False)
 
@@ -46,22 +47,36 @@ initial_conditions = {
     'electron': lambda x, v: lowrank_factors(1 / (jnp.sqrt(2*jnp.pi)*vte) * jnp.exp(-Ae*(v**2) / (2*Te)), electron_grid),
     'ion': lambda x, v: lowrank_factors(1 / (jnp.sqrt(2*jnp.pi)*vti) * jnp.exp(-Ai*(v**2) / (2*Ti)), ion_grid)
 }
+boundary_conditions = {
+    'phi': {
+        'left': {
+            'type': 'Dirichlet',
+            'val': 0.0
+        },
+        'right': {
+            'type': 'Dirichlet',
+            'val': 0.0
+        },
+    }
+}
 
-solver = Solver(plasma, 
-                r,
-                {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid},
-                1.0, 1.0)
+solver = Solver(plasma, r, grids, 1.0, 1.0)
 
-solve = jax.jit(lambda: solver.solve(0.001, 600, initial_conditions, 0.001))
+solve = jax.jit(lambda: solver.solve(0.01 / 2, 600, initial_conditions, boundary_conditions, 0.001))
 result = solve()
 
 Xt, S, V = result['electron']
 fe = Xt.T @ S @ V
+Xt, S, V = result['ion']
+fi = Xt.T @ S @ V
+
+E = solver.solve_poisson(result, grids, boundary_conditions)
 
 fig, axes = plt.subplots(3, 1, figsize=(10, 8))
 axes[0].imshow(fe.T, origin='lower')
 axes[0].set_aspect("auto")
-axes[1].plot(V.T)
-axes[2].plot(Xt.T)
+axes[1].imshow(fi.T, origin='lower')
+axes[1].set_aspect("auto")
+axes[2].plot(E)
 plt.show()
 
