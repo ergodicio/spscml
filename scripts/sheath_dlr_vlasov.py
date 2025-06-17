@@ -25,8 +25,8 @@ vti = jnp.sqrt(Ti / Ai)
 plasma = TwoSpeciesPlasma(1.0, 1.0, 0.0, Ai, Ae, 1.0, -1.0)
 
 x_grid = Grid(200, 100)
-ion_grid = x_grid.extend_to_phase_space(6*vti, 150)
-electron_grid = x_grid.extend_to_phase_space(6*vte, 150)
+ion_grid = x_grid.extend_to_phase_space(6*vti, 50)
+electron_grid = x_grid.extend_to_phase_space(6*vte, 50)
 grids = {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid}
 
 r = 16
@@ -36,10 +36,6 @@ def lowrank_factors(f, grid):
     X = X.T[:r, :] / grid.dx**0.5
     S = jnp.diag(S[:r]) * (grid.dx * grid.dv)**0.5
     V = V[:r, :] / grid.dv**0.5
-
-    assert X.shape == (r, 200)
-    assert S.shape == (r, r)
-    assert V.shape == (r, 150)
 
     return (X, S, V)
 
@@ -62,7 +58,11 @@ boundary_conditions = {
 
 solver = Solver(plasma, r, grids, 1.0, 1.0)
 
-solve = jax.jit(lambda: solver.solve(0.01 / 2, 600, initial_conditions, boundary_conditions, 0.001))
+dv = ion_grid.dv
+max_dt = 0.3 * dv**2
+print("max_dt = ", max_dt)
+
+solve = jax.jit(lambda: solver.solve(0.01 / 10, 40, initial_conditions, boundary_conditions, 0.001))
 result = solve()
 
 Xt, S, V = result['electron']
