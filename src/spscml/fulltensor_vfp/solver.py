@@ -180,7 +180,7 @@ class Solver(eqx.Module):
         return jnp.expand_dims(h, axis=1)
 
 
-    def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs):
+    def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs, nu):
         # free streaming term
         f_bc_x = self.apply_bcs(f, bcs, 'x')
 
@@ -199,8 +199,22 @@ class Solver(eqx.Module):
         Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', F, grid.dv, axis=1)
 
         # TODO: implement Fokker-Planck operator
+        n = zeroth_moment(f, grid)
+        M = self.maxwellian(A, grid)
+        nu = nu * self.collision_frequency_shape_func().flatten()
+    
+        BGK = nu * (n*M - f)
 
-        return -vdfdx - Edfdv
+        return -vdfdx - Edfdv + BGK
+
+
+    def maxwellian(self, A, grid):
+        v = grid.vs
+        T = 1.0
+        n = 1.0
+        theta = T / A
+        M = n / (jnp.sqrt(2*jnp.pi*theta)) * jnp.exp(-v**2 / (2*theta))
+        return M
 
 
     def apply_bcs(self, f, bcs, dim):
