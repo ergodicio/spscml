@@ -25,9 +25,9 @@ vti = jnp.sqrt(Ti / Ai)
 
 plasma = TwoSpeciesPlasma(1.0, 1.0, 0.0, Ai, Ae, 1.0, -1.0)
 
-x_grid = Grid(400, 200)
-ion_grid = x_grid.extend_to_phase_space(6*vti, 200)
-electron_grid = x_grid.extend_to_phase_space(6*vte, 200)
+x_grid = Grid(800, 400)
+ion_grid = x_grid.extend_to_phase_space(6*vti, 400)
+electron_grid = x_grid.extend_to_phase_space(6*vte, 400)
 
 initial_conditions = {
     'electron': lambda x, v: 1 / (jnp.sqrt(2*jnp.pi)*vte) * jnp.exp(-Ae*(v**2) / (2*Te)),
