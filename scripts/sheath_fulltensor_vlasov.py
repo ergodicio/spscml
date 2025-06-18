@@ -68,11 +68,13 @@ boundary_conditions = {
     }
 }
 
+nu = 1.0
 solver = Solver(plasma, 
                 {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid},
-                flux_source_enabled=True)
+                flux_source_enabled=True,
+                nu_ee=nu*5, nu_ii=nu)
 
-solve = jax.jit(lambda: solver.solve(0.1, 4000, initial_conditions, boundary_conditions))
+solve = jax.jit(lambda: solver.solve(0.01, 4000, initial_conditions, boundary_conditions, 0.1))
 result = solve()
 
 E = solver.poisson_solve_from_fs(result, boundary_conditions)
@@ -94,14 +96,16 @@ ji = 1 * first_moment(fi, ion_grid)
 axes[0].plot(-je)
 axes[0].plot(ji)
 axes[0].plot(je+ji)
+axes[0].plot(E, label='E')
+axes[0].legend()
 
 ne = zeroth_moment(fe, electron_grid)
 ni = zeroth_moment(fi, ion_grid)
 #axes[1].plot(ne)
 #axes[1].plot(ni)
 
-axes[1].imshow(fe.T)
-axes[2].imshow(fi.T)
+axes[1].imshow(fe.T, origin='lower')
+axes[2].imshow(fi.T, origin='lower')
 
 
 plt.show()

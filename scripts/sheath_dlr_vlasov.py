@@ -29,7 +29,7 @@ ion_grid = x_grid.extend_to_phase_space(6*vti, 50)
 electron_grid = x_grid.extend_to_phase_space(6*vte, 50)
 grids = {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid}
 
-r = 16
+r = 20
 def lowrank_factors(f, grid):
     X, S, V = jnp.linalg.svd(f, full_matrices=False)
 
@@ -39,8 +39,10 @@ def lowrank_factors(f, grid):
 
     return (X, S, V)
 
+#ne = 1 + 0.1 * jnp.cos(2*jnp.pi * electron_grid.xs / 100 * 6)
+ne = jnp.ones(x_grid.Nx)
 initial_conditions = { 
-    'electron': lambda x, v: lowrank_factors(1 / (jnp.sqrt(2*jnp.pi)*vte) * jnp.exp(-Ae*(v**2) / (2*Te)), electron_grid),
+                      'electron': lambda x, v: lowrank_factors(ne[:, None] / (jnp.sqrt(2*jnp.pi)*vte) * jnp.exp(-Ae*(v**2) / (2*Te)), electron_grid),
     'ion': lambda x, v: lowrank_factors(1 / (jnp.sqrt(2*jnp.pi)*vti) * jnp.exp(-Ai*(v**2) / (2*Ti)), ion_grid)
 }
 boundary_conditions = {
@@ -51,32 +53,45 @@ boundary_conditions = {
         },
         'right': {
             'type': 'Dirichlet',
-            'val': 0.0
+            'val': 4.3
         },
     }
 }
 
-solver = Solver(plasma, r, grids, 1.0, 1.0)
+nu = 1.0
+solver = Solver(plasma, r, grids, nu*5, nu)
 
-dv = ion_grid.dv
-max_dt = 0.3 * dv**2
-print("max_dt = ", max_dt)
+dtmax = x_grid.dx / electron_grid.vmax / 10
+print("dt = ", dtmax)
 
-solve = jax.jit(lambda: solver.solve(0.01 / 10, 40, initial_conditions, boundary_conditions, 0.001))
+solve = jax.jit(lambda: solver.solve(0.01, 3000, initial_conditions, boundary_conditions, 0.01))
 result = solve()
 
 Xt, S, V = result['electron']
 fe = Xt.T @ S @ V
+ne = Xt.T @ S @ (V @ jnp.ones(electron_grid.Nv)) * electron_grid.dv
+je = -1 * Xt.T @ S @ (V @ electron_grid.vs) * electron_grid.dv
+print(je.shape)
+assert je.shape == (electron_grid.Nx,)
+
 Xt, S, V = result['ion']
 fi = Xt.T @ S @ V
+ni = Xt.T @ S @ (V @ jnp.ones(ion_grid.Nv)) * ion_grid.dv
+ji = Xt.T @ S @ (V @ ion_grid.vs) * ion_grid.dv
 
-E = solver.solve_poisson(result, grids, boundary_conditions)
+E = solver.solve_poisson_ys(result, grids, boundary_conditions)
 
-fig, axes = plt.subplots(3, 1, figsize=(10, 8))
+
+fig, axes = plt.subplots(4, 1, figsize=(10, 8))
 axes[0].imshow(fe.T, origin='lower')
 axes[0].set_aspect("auto")
 axes[1].imshow(fi.T, origin='lower')
 axes[1].set_aspect("auto")
-axes[2].plot(E)
+#axes[2].plot(E)
+axes[3].plot(result['electron'][0][:4, :].T)
+axes[2].plot(ji.T)
+axes[2].plot((ji+je).T)
+axes[2].plot(E, label='E')
+axes[2].legend()
 plt.show()
 

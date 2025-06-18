@@ -262,22 +262,20 @@ so that the ratio of volumetric densities is determined by $T'$.
 
 \section{Vlasov discretizations}
 
-The governing kinetic equation for our study is the 1D1V Vlasov-Fokker-Planck equation in
+The governing kinetic equation for our study is the 1D1V Vlasov-BGK equation in
 the ``flexible plasma normalization'' \cite{millerMultispecies13momentModel2016}:
 \begin{align}
-    \label{eqn:vlasov_fp}
+    \label{eqn:vlasov_bgk}
     \partial_t f_s + v \partial_x f_s + (\omega_c \tau) \frac{Z_s}{A_s} E \partial_v f_s &= Q(f_s) + \Gamma_s
 \end{align}
-The collision operator $Q$ is a linearized version of the Dougherty-Fokker-Planck operator about an equilibrium
+The collision operator $Q$ is a linearized version of the BGK collision operator about an equilibrium
 distribution with temperature $T_{0}$ and velocity $u = 0$:
 \begin{align*}
-    Q(f_s) &= \nu_s(x) \partial_v \left( \frac{T_{0}}{A_s} \partial_v f_s + v f_s \right) \\
-            \label{eqn:maxwellian_collisional}
-        &= \nu_s(x) \partial_v \left( M_s \partial_v \left( \frac{f_s}{M_s} \right) \right),
+    Q(f_s) &= \nu_s(x) (M_s(v) - f_s),
 \end{align*}
 where
 \begin{align*}
-    M_s(v) = \frac{1}{(2\pi T_0/A_s)^{1/2}} \exp \left( -\frac{A_s|v|^2}{2T_0} \right) 
+    M_s(v) = \frac{1}{(2\pi T_0/A_s)^{1/2}} \exp \left( -\frac{A_s|v|^2}{2T_0} \right).
 \end{align*}
 The collision frequency $\nu_s(x)$ is spatially dependent, since we apply an increased collision frequency in the center of the domain
 in order to simulate equilibration with the bulk plasma.
@@ -294,7 +292,7 @@ where $F_{out}$ is the flux of \emph{ions} out of the domain:
     F_{out} = \int v \left( f_i \vert_{x=-L/2} + f_i \vert_{x=L/2} \right) \, \mathrm{d} v
 \end{align*}
 
-The normalization constants appearing in Equation \eqref{eqn:vlasov_fp} are as follows:
+The normalization constants appearing in Equation \eqref{eqn:vlasov_bgk} are as follows:
 \begin{itemize}
     \item $Z_s$ and $A_s$ are the normalized charge and mass of species $s$, expressed in units of the proton charge and mass.
     \item $\omega_c \tau$ is the normalized reference proton cyclotron frequency in a field $B_0$ which would give unit plasma beta: $|B_0|^2 / 2 \mu_0 = n_0 T_0$.
@@ -302,7 +300,7 @@ The normalization constants appearing in Equation \eqref{eqn:vlasov_fp} are as f
 For now we can take these normalization constants as given; we will need to concern ourselves with their definitions when we
 move on to translating a specific physical problem into our equation setup.
 
-Equation \eqref{eqn:vlasov_fp} is coupled to the normalized Gauss's law,
+Equation \eqref{eqn:vlasov_bgk} is coupled to the normalized Gauss's law,
 \begin{align}
 \partial_x E = \frac{(\omega_p \tau)^2}{\omega_c \tau} \rho_c,
 \end{align}
@@ -363,24 +361,21 @@ the form of the $\partial_x X$ terms in the S and L substeps.
 \begin{align*}
     \partial_t K_j &= -\sum_{l=1}^r \left\langle V_j, v^+ V_l \right\rangle_v D_+ K_l(x, t) - \sum_{l=1}^r \left\langle V_j, v^- V_l \right\rangle_v D_- K_l(x, t)  \\
                          &\quad - (\omega_c \tau) \frac{Z}{A} \left[ \sum_{l=1}^r \left\langle V_j, D_+ V_l \right\rangle_v E_+ K_l(x, t) + \sum_{l=1}^r \left\langle V_j, D_- V_l \right\rangle_v E_- K_l(x, t) \right] \\
-                         &\quad + \sum_{l=1}^r \nu(x) \left\langle V_j, D \left( M D \left( \frac{V_l}{M} \right) \right) \right\rangle_v K_l(x, t) \\
-                         &\quad + \sum_{l=1}^r \gamma(x) \left\langle V_j, M V_l \right\rangle_v K_l(x, t)
+                         &\quad + (\nu(x) + \gamma(x)) \left\langle V_j, M \right\rangle_v - \sum_{l=1}^r \nu(x)  \left\langle V_j, V_l \right\rangle_v K_l(x, t)
 \end{align*}
 
 \textbf{S step:}
 \begin{align*}
     \partial_t S_{ij} &= \sum_{l=1}^r \left\langle V_j, v^+ V_l \right\rangle_v \left\langle X_i, D_+ K_l \right\rangle_x + \sum_{l=1}^r \left\langle V_j, v^- V_l \right\rangle_v \left\langle X_i, D_- K_l \right\rangle_x \\
                       &\quad + (\omega_c \tau) \frac{Z}{A} \left[ \sum_{k,l=1}^r \left\langle V_j, D_+ V_l \right\rangle_v \left\langle X_i, E_+ X_k \right\rangle_x S_{kl} + \sum_{k,l=1}^r \left\langle V_j, D_- V_l \right\rangle_v \left\langle X_i, E_- X_k \right\rangle_x S_{kl} \right] \\
-                      &\quad - \sum_{k,l=1}^r \left\langle V_j, D \left( M D \left( \frac{V_l}{M} \right) \right) \right\rangle_v \left\langle X_i, \nu(x) X_k \right\rangle_x S_{kl} \\
-                      &\quad - \sum_{k,l=1}^r \left\langle V_j, M V_l \right\rangle_v \left\langle X_i, \gamma(x) X_k \right\rangle_x S_{kl}
+                      &\quad - \left\langle X_i, \nu(x) +\gamma(x) \right\rangle_x \left\langle V_j, M \right\rangle_v + \sum_{k,l=1}^r \left\langle X_i, \nu(x) X_k \right\rangle_x \left\langle V_j, V_l \right\rangle_v  S_{kl}
 \end{align*}
 
 \textbf{L step:}
 \begin{align*}
     \partial_t L_i &= -\sum_{l=1}^r v^+ V_l \left\langle X_i, D_+ K_l \right\rangle_x - \sum_{l=1}^r v^- V_l \left\langle X_i, D_- K_l \right\rangle_x \\
                    &\quad - (\omega_c \tau) \frac{Z}{A} \left[ \sum_{k=1}^r \left\langle X_i, E_+ X_k \right\rangle_x D_+ L_k + \sum_{k=1}^r \left\langle X_i, E_- X_k \right\rangle_x D_- L_k  \right] \\
-                   &\quad + \sum_{k=1}^r \left\langle X_i, \nu(x) X_k \right\rangle_x D \left( M D \left( \frac{L_k}{M} \right) \right) \\
-                   &\quad + \sum_{k=1}^r \left\langle X_i, \gamma(x) X_k \right\rangle_x M(v) L_k(v, t) 
+                   &\quad + \left\langle X_i, \nu(x) + \gamma(x) \right\rangle_x M - \sum_{k=1}^r \left\langle X_i, \nu(x) X_k \right\rangle L_k
 \end{align*}
 
 

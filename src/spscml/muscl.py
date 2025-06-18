@@ -23,6 +23,8 @@ def slope_limiter(a, b, limiter_type):
         return minmod3(0.5*(a+b), 2*a, 2*b)
     elif limiter_type == 'vanLeer':
         return minmod3(2*a*b/(a+b), 2*a, 2*b)
+    elif limiter_type == 'upwind':
+        return jnp.zeros_like(0)
     else:
         raise ValueError(f"Unknown limiter type `{limiter_type}`")
 

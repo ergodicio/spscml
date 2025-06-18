@@ -13,24 +13,29 @@ from ..poisson import poisson_solve
 
 SPECIES = ['electron', 'ion']
 
+SCHEME = 'minmod'
+
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
     r: int
     grids: PyTree
     nu_ee: float
     nu_ii: float
+    boundary_type: str
 
 
     def __init__(self,
                  plasma: TwoSpeciesPlasma, 
                  r: int,
                  grids,
-                 nu_ee, nu_ii):
+                 nu_ee, nu_ii,
+                 boundary_type='AbsorbingWall'):
         self.plasma = plasma
         self.r = r
         self.grids = grids
         self.nu_ee = nu_ee
         self.nu_ii = nu_ii
+        self.boundary_type = boundary_type
 
 
     def solve(self, dt, Nt, initial_conditions, boundary_conditions, dtmax):
@@ -48,40 +53,40 @@ class Solver(eqx.Module):
             dt0=dt,
             y0=f0,
             args={"f0": f0, "dt": dt, 'bcs': boundary_conditions},
-            saveat=SaveAt(t1=True),
+            saveat=SaveAt(ts=jnp.linspace(0.0, Nt*dt, 100)),
         )
-        return jax.tree.map(lambda fs: fs[0, ...], solution.ys)
+        return jax.tree.map(lambda fs: fs[-1, ...], solution.ys)
+        #return solution
 
 
     def step(self, t, ys, args):
         ys = self.step_K(t, ys, args)
-        #jax.debug.print("S after K: {}", ys['electron'][1][:3, :3])
         ys = self.step_S(t, ys, args)
-        #jax.debug.print("S after S: {}", ys['electron'][1][:3, :3])
         ys = self.step_L(t, ys, args)
-        #jax.debug.print("S after L: {}", ys['electron'][1][:3, :3])
         return ys
 
 
     def step_K(self, t, ys, args):
-        E = self.solve_poisson(ys, self.grids, args['bcs'])
         As = {'electron': self.plasma.Ae, 'ion': self.plasma.Ai}
         Zs = {'electron': self.plasma.Ze, 'ion': self.plasma.Zi}
         nus = {'electron': self.nu_ee, 'ion': self.nu_ii}
 
         K_of = lambda X, S, V: (X.T @ S).T
 
-        args_of = lambda sp: {**args, 'V': ys[sp][2], 'E': E, 'Z': Zs[sp], 'A': As[sp], 'nu': nus[sp]}
+        flux_out = 0*self.ion_flux_out(ys)
+        args_of = lambda sp: {**args, 'V': ys[sp][2], 'Z': Zs[sp], 'A': As[sp], 'nu': nus[sp],
+                              'flux_out': flux_out}
+
+        def step_Ks_with_E_RHS(Ks):
+            E = self.solve_poisson_KV(Ks, ys, self.grids, args['bcs'])
+            return { sp: self.K_step_single_species_nonstiff_RHS(Ks[sp], self.grids[sp], 
+                                                                 {**args_of(sp), 'E': E})
+                    for sp in SPECIES }
+
 
         Ks = ssprk2({ sp: K_of(*ys[sp]) for sp in SPECIES },
-                    lambda Ks: {
-                        sp: self.K_step_single_species_nonstiff_RHS(Ks[sp], self.grids[sp], args_of(sp))
-                        for sp in SPECIES},
+                    step_Ks_with_E_RHS,
                     args['dt'])
-
-        # Implicit solve of collision term
-        #Ks = { sp: self.K_step_single_species_implicit_collisions(Ks[sp], self.grids[sp], args_of(sp)) 
-              #for sp in SPECIES }
 
         def XSV_of(K, y, grid):
             _, _, V = y
@@ -103,23 +108,27 @@ class Solver(eqx.Module):
         V_left_matrix = V @ jnp.concatenate([jnp.zeros((r, 1)), jnp.diff(V, axis=1) / grid.dv], axis=1).T * grid.dv
         V_right_matrix = V @ jnp.concatenate([jnp.diff(V, axis=1) / grid.dv, jnp.zeros((r, 1))], axis=1).T * grid.dv
 
-        K_bcs = self.apply_absorbing_wall_bcs(K, V, grid, n_ghost_cells=2)
+        K_bcs = self.apply_K_bcs(K, V, grid, n_ghost_cells=2)
         v_flux_func = lambda left, right: v_plus_matrix @ left + v_minus_matrix @ right
-        v_flux = slope_limited_flux_divergence(K_bcs, 'minmod', v_flux_func, grid.dx, axis=1)
+        v_flux = slope_limited_flux_divergence(K_bcs, SCHEME, v_flux_func, grid.dx, axis=1)
 
         fac = self.plasma.omega_c_tau * args['Z'] / args['A']
         E_plus = jnp.atleast_2d(jnp.where(fac*E > 0, fac*E, 0.0))
         E_minus = jnp.atleast_2d(jnp.where(fac*E < 0, fac*E, 0.0))
         E_flux = (V_left_matrix @ (K * E_plus) + V_right_matrix @ (K * E_minus))
 
-        V_collisions_matrix = V @ self.apply_collisions(V, args, grid).T * grid.dv
+        gamma = args['flux_out'] * self.flux_source_shape_func()
+
         nu = args['nu'] * self.collision_frequency_shape_func()
-        collision_term = V_collisions_matrix @ (K * nu)
+        M = self.maxwellian(grid, args)
+        VM = V @ M * grid.dv
+
+        collision_term = (nu+gamma)[None, :] * VM[:, None] - K * nu[None, :]
 
         return -v_flux - E_flux + collision_term
 
 
-    def K_step_single_species_implicit_collisions(self, rhs, grid, args):
+    def K_step_single_species_implicit_collisions_unused(self, rhs, grid, args):
         V = args['V']
         r = self.r
 
@@ -136,19 +145,24 @@ class Solver(eqx.Module):
 
 
     def step_S(self, t, ys, args):
-        E = self.solve_poisson(ys, self.grids, args['bcs'])
         As = {'electron': self.plasma.Ae, 'ion': self.plasma.Ai}
         Zs = {'electron': self.plasma.Ze, 'ion': self.plasma.Zi}
         nus = {'electron': self.nu_ee, 'ion': self.nu_ii}
         
+        flux_out = self.ion_flux_out(ys)
         S_of = lambda X, S, V: S
-        args_of = lambda sp: {**args, 'X': ys[sp][0], 'V': ys[sp][2], 'E': E, 
-                              'Z': Zs[sp], 'A': As[sp], 'nu': nus[sp]}
+        args_of = lambda sp: {**args, 'X': ys[sp][0], 'V': ys[sp][2],
+                              'Z': Zs[sp], 'A': As[sp], 'nu': nus[sp], 'flux_out': flux_out}
 
-        Ss = rk1({ sp: S_of(*ys[sp]) for sp in SPECIES }, 
-                    lambda Ss: { 
-                                sp: self.S_step_single_species_nonstiff_RHS(Ss[sp], self.grids[sp], args_of(sp)) 
-                                for sp in SPECIES}, 
+        def step_Ss_with_E_RHS(Ss):
+            E = self.solve_poisson_XSV(Ss, ys, self.grids, args['bcs'])
+            return { sp: self.S_step_single_species_nonstiff_RHS(Ss[sp], self.grids[sp], 
+                                                                 {**args_of(sp), 'E': E})
+                    for sp in SPECIES }
+
+
+        Ss = ssprk2({ sp: S_of(*ys[sp]) for sp in SPECIES }, 
+                    step_Ss_with_E_RHS,
                     args['dt'])
 
         def XSV_of(S, y):
@@ -165,7 +179,7 @@ class Solver(eqx.Module):
         v_plus_matrix = V @ jnp.diag(jnp.where(v > 0, v, 0.0)) @ V.T * grid.dv
         v_minus_matrix = V @ jnp.diag(jnp.where(v < 0, v, 0.0)) @ V.T * grid.dv
 
-        K = self.apply_absorbing_wall_bcs((X.T @ S).T, V, grid, n_ghost_cells=1)
+        K = self.apply_K_bcs((X.T @ S).T, V, grid, n_ghost_cells=1)
         K_diff_left = jnp.diff(K[:, :-1], axis=1) / grid.dx
         K_left_matrix = X @ K_diff_left.T * grid.dx
         K_diff_right = jnp.diff(K[:, 1:], axis=1) / grid.dx
@@ -181,33 +195,42 @@ class Solver(eqx.Module):
         E_minus_matrix = X @ jnp.diag(jnp.where(fac*E < 0, fac*E, 0.0)) @ X.T * grid.dx
         E_term = (E_plus_matrix @ S @ V_left_matrix.T + E_minus_matrix @ S @ V_right_matrix.T)
 
-        V_collisions_matrix = V @ self.apply_collisions(V, args, grid).T * grid.dv
+        gamma = args['flux_out'] * self.flux_source_shape_func()
+
         nu = args['nu'] * self.collision_frequency_shape_func()
-        nu_matrix = X @ jnp.diag(nu) @ X.T
-        collision_term = nu_matrix @ S @ V_collisions_matrix.T
+        X_nu_gamma_vec = X @ (nu + gamma) * grid.dx
+        X_nu_matrix = X @ jnp.diag(nu) @ X.T * grid.dx
+        M = self.maxwellian(grid, args)
+        VM = V @ M * grid.dv
+        collision_term = X_nu_gamma_vec[:, None] * VM[None, :] - X_nu_matrix @ S
 
         return v_term + E_term - collision_term
 
 
     def step_L(self, t, ys, args):
-        E = self.solve_poisson(ys, self.grids, args['bcs'])
         As = {'electron': self.plasma.Ae, 'ion': self.plasma.Ai}
         Zs = {'electron': self.plasma.Ze, 'ion': self.plasma.Zi}
         nus = {'electron': self.nu_ee, 'ion': self.nu_ii}
 
         L_of = lambda X, S, V: S @ V
-        args_of = lambda sp: {**args, 'X': ys[sp][0], 'E': E, 'Z': Zs[sp], 'A': As[sp], 'nu': nus[sp]}
+        flux_out = self.ion_flux_out(ys)
+        args_of = lambda sp: {**args, 'X': ys[sp][0], 'Z': Zs[sp], 'A': As[sp], 'nu': nus[sp],
+                              'flux_out': flux_out}
+
+        def step_Ls_with_E_RHS(Ls):
+            E = self.solve_poisson_XL(Ls, ys, self.grids, args['bcs'])
+            return { sp: self.L_step_single_species_nonstiff_RHS(Ls[sp], self.grids[sp], 
+                                                                 {**args_of(sp), 'E': E})
+                    for sp in SPECIES }
         
         Ls = ssprk2({ sp: L_of(*ys[sp]) for sp in SPECIES },
-                    lambda Ls: {
-                        sp: self.L_step_single_species_nonstiff_RHS(Ls[sp], self.grids[sp], args_of(sp))
-                        for sp in SPECIES},
+                    step_Ls_with_E_RHS,
                     args['dt'])
 
         def XSV_of(L, y, grid):
             X, _, _ = y
-            (Vt, S) = jnp.linalg.qr(L.T)
-            return (X, S * grid.dv**0.5, Vt.T / grid.dv**0.5)
+            (Vt, St) = jnp.linalg.qr(L.T)
+            return (X, St.T * grid.dv**0.5, Vt.T / grid.dv**0.5)
 
         return { sp: XSV_of(Ls[sp], ys[sp], self.grids[sp]) for sp in SPECIES }
 
@@ -217,11 +240,11 @@ class Solver(eqx.Module):
         v = grid.vs
         r = self.r
 
-        Vt, S = jnp.linalg.qr(L.T)
-        S = S * grid.dv**0.5
+        Vt, St = jnp.linalg.qr(L.T)
+        S = St.T * grid.dv**0.5
         V = Vt.T / grid.dv**0.5
 
-        K = self.apply_absorbing_wall_bcs((X.T @ S).T, V, grid, n_ghost_cells=1)
+        K = self.apply_K_bcs((X.T @ S).T, V, grid, n_ghost_cells=1)
         K_diff_left = jnp.diff(K[:, :-1], axis=1) / grid.dx
         K_left_matrix = X @ K_diff_left.T * grid.dx
         K_diff_right = jnp.diff(K[:, 1:], axis=1) / grid.dx
@@ -236,16 +259,21 @@ class Solver(eqx.Module):
         E_minus_matrix = X @ jnp.diag(jnp.where(fac*E < 0, fac*E, 0.0)) @ X.T * grid.dx
         L_bcs = jnp.pad(L, [(0, 0), (2, 2)], mode='empty')
         E_flux_func = lambda left, right: E_plus_matrix @ left + E_minus_matrix @ right
-        E_flux = slope_limited_flux_divergence(L_bcs, 'minmod', E_flux_func, grid.dv, axis=1)
+        E_flux = slope_limited_flux_divergence(L_bcs, SCHEME, E_flux_func, grid.dv, axis=1)
+
+        gamma = args['flux_out'] * self.flux_source_shape_func()
 
         nu = args['nu'] * self.collision_frequency_shape_func()
-        nu_matrix = X @ jnp.diag(nu) @ X.T
-        collision_term = nu_matrix @ S @ self.apply_collisions(L, args, grid)
+        X_nu_gamma_vec = X @ (gamma + nu) * grid.dx
+        X_nu_matrix = X @ jnp.diag(nu) @ X.T * grid.dx
+        M = self.maxwellian(grid, args)
+
+        collision_term = X_nu_gamma_vec[:, None] * M[None, :] - X_nu_matrix @ L
 
         return -v_flux - E_flux + collision_term
 
 
-    def L_step_single_species_implicit_collisions(self, rhs, grid, args):
+    def L_step_single_species_implicit_collisions_unused(self, rhs, grid, args):
         X = args['X']
         #nu = args['nu'] * self.collision_frequency_shape_func()
         nu = args['nu']
@@ -263,25 +291,48 @@ class Solver(eqx.Module):
         return L_next
 
 
-    def solve_poisson(self, ys, grids, bcs):
-        rho_c = self.rho_c_species(ys['electron'], self.plasma.Ze, grids['electron']) + \
-                self.rho_c_species(ys['ion'], self.plasma.Zi, grids['ion'])
-        E = poisson_solve(grids['x'], self.plasma, rho_c, bcs)
-        assert E.shape == (grids['x'].Nx,)
-        return E
+    def solve_poisson_ys(self, ys, grids, bcs):
+        rho_c = self.rho_c_species_XSV(*ys['electron'], 
+                                      self.plasma.Ze, grids['electron']) + \
+                self.rho_c_species_XSV(*ys['ion'],
+                                      self.plasma.Zi, grids['ion'])
+        return poisson_solve(grids['x'], self.plasma, rho_c, bcs)
 
+    def solve_poisson_KV(self, Ks, ys, grids, bcs):
+        rho_c = self.rho_c_species_KV(Ks['electron'], ys['electron'][2], 
+                                      self.plasma.Ze, grids['electron']) + \
+                self.rho_c_species_KV(Ks['ion'], ys['ion'][2], self.plasma.Zi, grids['ion'])
+        return poisson_solve(grids['x'], self.plasma, rho_c, bcs)
 
-    def rho_c_species(self, y, Z, grid):
-        X, S, V = y
-
+    def rho_c_species_KV(self, K, V, Z, grid):
         V_mass_vector = V @ jnp.ones(grid.Nv) * grid.dv
-        result = (X.T @ S @ V_mass_vector) * Z
-        assert result.shape == (grid.Nx,)
-        return result
+        return (K.T @ V_mass_vector) * Z
+
+    def solve_poisson_XSV(self, Ss, ys, grids, bcs):
+        rho_c = self.rho_c_species_XSV(ys['electron'][0], Ss['electron'], ys['electron'][2],
+                                      self.plasma.Ze, grids['electron']) + \
+                self.rho_c_species_XSV(ys['ion'][0], Ss['ion'], ys['ion'][2], 
+                                      self.plasma.Zi, grids['ion'])
+        return poisson_solve(grids['x'], self.plasma, rho_c, bcs)
+
+    def rho_c_species_XSV(self, X, S, V, Z, grid):
+        V_mass_vector = V @ jnp.ones(grid.Nv) * grid.dv
+        return (X.T @ S @ V_mass_vector) * Z
+
+    def solve_poisson_XL(self, Ls, ys, grids, bcs):
+        rho_c = self.rho_c_species_XL(ys['electron'][0], Ls['electron'], 
+                                      self.plasma.Ze, grids['electron']) + \
+                self.rho_c_species_XL(ys['ion'][0], Ls['ion'], self.plasma.Zi, grids['ion'])
+        return poisson_solve(grids['x'], self.plasma, rho_c, bcs)
+
+    def rho_c_species_XL(self, X, L, Z, grid):
+        L_mass_vector = L @ jnp.ones(grid.Nv) * grid.dv
+        return X.T @ L_mass_vector * Z
 
     
     def collision_frequency_shape_func(self):
         L = self.grids['x'].Lx
+        #return jnp.ones(self.grids['x'].Nx)
 
         midpt = L/4
         # Want 10 e-foldings between the midpoint (2/3rds of the way to the sheath)
@@ -293,23 +344,54 @@ class Solver(eqx.Module):
         return h
 
 
-    def apply_absorbing_wall_bcs(self, K, V, grid, n_ghost_cells):
+    def flux_source_shape_func(self):
+        Ls = self.grids['x'].Lx / 4
+        return (1 / Ls - jnp.abs(self.grids['x'].xs) / Ls**2)
+
+
+    def ion_flux_out(self, ys):
+        X, S, V = ys['ion']
+        v_matrix = V @ jnp.diag(self.grids['ion'].vs) @ V.T * self.grids['ion'].dv
+        flux_out = jnp.sum(X[:, -1].T @ S @ v_matrix.T + X[:, 0].T @ S @ v_matrix.T)
+        return flux_out
+
+
+    def apply_K_bcs(self, K, V, grid, n_ghost_cells):
         v = grid.vs
         V_leftgoing_matrix = V @ jnp.diag(jnp.where(v < 0, 1.0, 0.0)) @ V.T * grid.dv
         V_rightgoing_matrix = V @ jnp.diag(jnp.where(v > 0, 1.0, 0.0)) @ V.T * grid.dv
 
-        if n_ghost_cells == 1:
-            return jnp.concatenate([
-                jnp.atleast_2d(V_leftgoing_matrix @ K[:, 0]).T,
-                K,
-                jnp.atleast_2d(V_rightgoing_matrix @ K[:, -1]).T,
-            ], axis=1)
-        elif n_ghost_cells == 2:
-            return jnp.concatenate([
-                V_leftgoing_matrix @ K[:, [1, 0]],
-                K, 
-                V_rightgoing_matrix @ K[:, [-1, -2]],
-            ], axis=1)
+        if self.boundary_type == 'AbsorbingWall':
+            if n_ghost_cells == 1:
+                return jnp.concatenate([
+                    jnp.atleast_2d(V_leftgoing_matrix @ K[:, 0]).T,
+                    #jnp.atleast_2d(K[:, -1]).T,
+                    K,
+                    jnp.atleast_2d(V_rightgoing_matrix @ K[:, -1]).T,
+                    #jnp.atleast_2d(K[:, 0]).T,
+                ], axis=1)
+            elif n_ghost_cells == 2:
+                K_out_left = K[:, [0, 1]] - 2*(K[:, [1]] - K[:, [0]])
+                return jnp.concatenate([
+                    V_leftgoing_matrix @ K_out_left,
+                    #K[:, [-2, -1]],
+                    K, 
+                    V_rightgoing_matrix @ K[:, [-1, -1]],
+                    #K[:, [0, 1]],
+                ], axis=1)
+        elif self.boundary_type == 'Periodic':
+            if n_ghost_cells == 1:
+                return jnp.concatenate([
+                    jnp.atleast_2d(K[:, -1]).T,
+                    K,
+                    jnp.atleast_2d(K[:, 0]).T,
+                ], axis=1)
+            elif n_ghost_cells == 2:
+                return jnp.concatenate([
+                    K[:, [-2, -1]],
+                    K, 
+                    K[:, [0, 1]],
+                ], axis=1)
 
 
     def apply_collisions(self, Vs, args, grid):
@@ -326,6 +408,15 @@ class Solver(eqx.Module):
                 .at[:].add(d*f) \
                 .at[:-1].add(du * f[1:])
         return jax.vmap(mul)(Vs)
+
+
+    def maxwellian(self, grid, args):
+        v = grid.vs
+        T = 1.0
+        n = 1.0
+        theta = T / args['A']
+        M = n / (jnp.sqrt(2*jnp.pi*theta)) * jnp.exp(-v**2 / (2*theta))
+        return M
 
 
     def collision_frequency(self, args):
@@ -351,6 +442,7 @@ class Solver(eqx.Module):
         solve = lambda nu, rhs : jax.lax.linalg.tridiagonal_solve(-dt * nu*dl, 1 - dt * nu*d, -dt * nu*du, rhs[:, None]).flatten()
         f_next = jax.vmap(solve)(nu, rhs)
         return f_next
+
 
 class Stepper(Euler):
     """
