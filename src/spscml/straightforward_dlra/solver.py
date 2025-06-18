@@ -8,7 +8,7 @@ from jaxtyping import PyTree
 from ..fulltensor_vfp.dougherty import lbo_operator_ij_L_diagonals
 from ..plasma import TwoSpeciesPlasma
 from ..rk import rk1, ssprk2
-from ..muscl import slope_limited_flux_divergence
+from ..muscl import slope_limited_flux, slope_limited_flux_divergence
 from ..poisson import poisson_solve
 
 SPECIES = ['electron', 'ion']
@@ -110,7 +110,12 @@ class Solver(eqx.Module):
 
         K_bcs = self.apply_K_bcs(K, V, grid, n_ghost_cells=2)
         v_flux_func = lambda left, right: v_plus_matrix @ left + v_minus_matrix @ right
-        v_flux = slope_limited_flux_divergence(K_bcs, SCHEME, v_flux_func, grid.dx, axis=1)
+        v_flux = slope_limited_flux(K_bcs, SCHEME, v_flux_func, grid.dx, axis=1)
+
+        #jax.debug.print("it was: {}", v_flux[:, 0])
+        v_flux = v_flux.at[:, 0].set(v_minus_matrix @ K[:, 0])
+        #jax.debug.print("now it is: {}", v_flux[:, 0])
+        v_flux_diff = jnp.diff(v_flux, axis=1) / grid.dx
 
         fac = self.plasma.omega_c_tau * args['Z'] / args['A']
         E_plus = jnp.atleast_2d(jnp.where(fac*E > 0, fac*E, 0.0))
@@ -125,7 +130,7 @@ class Solver(eqx.Module):
 
         collision_term = (nu+gamma)[None, :] * VM[:, None] - K * nu[None, :]
 
-        return -v_flux - E_flux + collision_term
+        return -v_flux_diff - E_flux + collision_term
 
 
     def K_step_single_species_implicit_collisions_unused(self, rhs, grid, args):

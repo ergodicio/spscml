@@ -53,7 +53,7 @@ boundary_conditions = {
         },
         'right': {
             'type': 'Dirichlet',
-            'val': 4.3
+            'val': 0.0
         },
     }
 }
