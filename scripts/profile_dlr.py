@@ -69,7 +69,7 @@ print("dt = ", dtmax)
 solve = jax.jit(lambda: solver.solve(0.01/2, 3000, initial_conditions, boundary_conditions, 0.01))
 # Warm up the jit
 solve()
-elapsed = timeit(solve, number=1)
+elapsed = timeit(lambda: jax.block_until_ready(solve()), number=1)
 print(f"{elapsed} s")
 
 #with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):

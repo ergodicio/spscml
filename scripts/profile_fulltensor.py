@@ -11,6 +11,8 @@ from spscml.grids import Grid, PhaseSpaceGrid
 from spscml.utils import zeroth_moment, first_moment
 
 from timeit import timeit
+jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_debug_nans", False)
 
 Te = 1.0
 Ti = 1.0
