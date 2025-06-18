@@ -21,7 +21,7 @@ vti = jnp.sqrt(Ti / Ai)
 
 plasma = TwoSpeciesPlasma(1.0, 1.0, 0.0, Ai, Ae, 1.0, -1.0)
 
-x_grid = Grid(800, 400)
+x_grid = Grid(800, 200)
 ion_grid = x_grid.extend_to_phase_space(6*vti, 400)
 electron_grid = x_grid.extend_to_phase_space(6*vte, 400)
 
@@ -74,7 +74,7 @@ solver = Solver(plasma,
                 flux_source_enabled=True,
                 nu_ee=nu*5, nu_ii=nu)
 
-solve = jax.jit(lambda: solver.solve(0.01, 3000, initial_conditions, boundary_conditions, 0.1))
+solve = jax.jit(lambda: solver.solve(0.01/2, 12000, initial_conditions, boundary_conditions, 0.1))
 result = solve()
 
 E = solver.poisson_solve_from_fs(result, boundary_conditions)

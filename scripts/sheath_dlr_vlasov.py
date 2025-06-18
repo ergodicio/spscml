@@ -24,9 +24,9 @@ vti = jnp.sqrt(Ti / Ai)
 
 plasma = TwoSpeciesPlasma(1.0, 1.0, 0.0, Ai, Ae, 1.0, -1.0)
 
-x_grid = Grid(200, 100)
-ion_grid = x_grid.extend_to_phase_space(8*vti, 100)
-electron_grid = x_grid.extend_to_phase_space(8*vte, 100)
+x_grid = Grid(800, 200)
+ion_grid = x_grid.extend_to_phase_space(8*vti, 400)
+electron_grid = x_grid.extend_to_phase_space(8*vte, 400)
 grids = {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid}
 
 r = 10
@@ -64,7 +64,7 @@ solver = Solver(plasma, r, grids, nu*5, nu)
 dtmax = x_grid.dx / electron_grid.vmax / 10
 print("dt = ", dtmax)
 
-solve = jax.jit(lambda: solver.solve(0.01/2, 6000, initial_conditions, boundary_conditions, 0.01))
+solve = jax.jit(lambda: solver.solve(0.01/4, 6000, initial_conditions, boundary_conditions, 0.01))
 result = solve()
 
 Xt, S, V = result['electron']
