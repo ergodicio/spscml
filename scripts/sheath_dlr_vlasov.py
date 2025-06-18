@@ -53,12 +53,12 @@ boundary_conditions = {
         },
         'right': {
             'type': 'Dirichlet',
-            'val': 2.0
+            'val': 4.3
         },
     }
 }
 
-nu = 1.1
+nu = 1.0
 solver = Solver(plasma, r, grids, nu*5, nu)
 
 dtmax = x_grid.dx / electron_grid.vmax / 10

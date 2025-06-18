@@ -63,7 +63,7 @@ boundary_conditions = {
         },
         'right': {
             'type': 'Dirichlet',
-            'val': 0.0
+            'val': 4.3
         },
     }
 }
@@ -74,7 +74,7 @@ solver = Solver(plasma,
                 flux_source_enabled=True,
                 nu_ee=nu*5, nu_ii=nu)
 
-solve = jax.jit(lambda: solver.solve(0.01, 1200, initial_conditions, boundary_conditions, 0.1))
+solve = jax.jit(lambda: solver.solve(0.01, 3000, initial_conditions, boundary_conditions, 0.1))
 result = solve()
 
 E = solver.poisson_solve_from_fs(result, boundary_conditions)
@@ -93,19 +93,21 @@ print("Si: ", Si / Si[0])
 je = -1 * first_moment(fe, electron_grid)
 ji = 1 * first_moment(fi, ion_grid)
 
-axes[0].plot(-je, label='-je')
-axes[0].plot(ji, label='ji')
-axes[0].plot(je+ji, label='j')
-axes[0].plot(E, label='E')
-axes[0].legend()
-
 ne = zeroth_moment(fe, electron_grid)
 ni = zeroth_moment(fi, ion_grid)
-#axes[1].plot(ne)
-#axes[1].plot(ni)
 
-axes[1].imshow(fe.T, origin='lower')
-axes[2].imshow(fi.T, origin='lower')
-
-
+fig, axes = plt.subplots(4, 1, figsize=(10, 8))
+axes[0].imshow(fe.T, origin='lower')
+axes[0].set_aspect("auto")
+axes[1].imshow(fi.T, origin='lower')
+axes[1].set_aspect("auto")
+#axes[2].plot(E)
+axes[2].plot(ji.T, label='ji')
+axes[2].plot(-je.T, label='-je')
+axes[2].plot((ji+je).T, label='j')
+axes[2].plot(E, label='E')
+axes[2].legend()
+axes[3].plot(ne, label='ne')
+axes[3].plot(ni, label='ni')
+axes[3].legend()
 plt.show()
