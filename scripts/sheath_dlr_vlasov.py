@@ -25,11 +25,11 @@ vti = jnp.sqrt(Ti / Ai)
 plasma = TwoSpeciesPlasma(1.0, 1.0, 0.0, Ai, Ae, 1.0, -1.0)
 
 x_grid = Grid(200, 100)
-ion_grid = x_grid.extend_to_phase_space(6*vti, 50)
-electron_grid = x_grid.extend_to_phase_space(6*vte, 50)
+ion_grid = x_grid.extend_to_phase_space(8*vti, 100)
+electron_grid = x_grid.extend_to_phase_space(8*vte, 100)
 grids = {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid}
 
-r = 20
+r = 10
 def lowrank_factors(f, grid):
     X, S, V = jnp.linalg.svd(f, full_matrices=False)
 
@@ -53,18 +53,18 @@ boundary_conditions = {
         },
         'right': {
             'type': 'Dirichlet',
-            'val': 0.0
+            'val': 2.0
         },
     }
 }
 
-nu = 1.0
+nu = 1.1
 solver = Solver(plasma, r, grids, nu*5, nu)
 
 dtmax = x_grid.dx / electron_grid.vmax / 10
 print("dt = ", dtmax)
 
-solve = jax.jit(lambda: solver.solve(0.01, 3000, initial_conditions, boundary_conditions, 0.01))
+solve = jax.jit(lambda: solver.solve(0.01/2, 6000, initial_conditions, boundary_conditions, 0.01))
 result = solve()
 
 Xt, S, V = result['electron']
@@ -88,10 +88,13 @@ axes[0].set_aspect("auto")
 axes[1].imshow(fi.T, origin='lower')
 axes[1].set_aspect("auto")
 #axes[2].plot(E)
-axes[3].plot(result['electron'][0][:4, :].T)
-axes[2].plot(ji.T)
-axes[2].plot((ji+je).T)
+axes[2].plot(ji.T, label='ji')
+axes[2].plot(-je.T, label='-je')
+axes[2].plot((ji+je).T, label='j')
 axes[2].plot(E, label='E')
 axes[2].legend()
+axes[3].plot(ne, label='ne')
+axes[3].plot(ni, label='ni')
+axes[3].legend()
 plt.show()
 

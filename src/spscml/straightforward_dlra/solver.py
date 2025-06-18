@@ -13,7 +13,7 @@ from ..poisson import poisson_solve
 
 SPECIES = ['electron', 'ion']
 
-SCHEME = 'minmod'
+SCHEME = 'upwind'
 
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
@@ -60,9 +60,13 @@ class Solver(eqx.Module):
 
 
     def step(self, t, ys, args):
+        dt = args['dt']
+        half_dt_args = {**args, 'dt': dt/2}
         ys = self.step_K(t, ys, args)
         ys = self.step_S(t, ys, args)
         ys = self.step_L(t, ys, args)
+        #ys = self.step_S(t, ys, half_dt_args)
+        #ys = self.step_K(t, ys, half_dt_args)
         return ys
 
 
@@ -73,7 +77,7 @@ class Solver(eqx.Module):
 
         K_of = lambda X, S, V: (X.T @ S).T
 
-        flux_out = 0*self.ion_flux_out(ys)
+        flux_out = 1*self.ion_flux_out(ys)
         args_of = lambda sp: {**args, 'V': ys[sp][2], 'Z': Zs[sp], 'A': As[sp], 'nu': nus[sp],
                               'flux_out': flux_out}
 
@@ -84,7 +88,7 @@ class Solver(eqx.Module):
                     for sp in SPECIES }
 
 
-        Ks = ssprk2({ sp: K_of(*ys[sp]) for sp in SPECIES },
+        Ks = rk1({ sp: K_of(*ys[sp]) for sp in SPECIES },
                     step_Ks_with_E_RHS,
                     args['dt'])
 
@@ -113,7 +117,7 @@ class Solver(eqx.Module):
         v_flux = slope_limited_flux(K_bcs, SCHEME, v_flux_func, grid.dx, axis=1)
 
         #jax.debug.print("it was: {}", v_flux[:, 0])
-        v_flux = v_flux.at[:, 0].set(v_minus_matrix @ K[:, 0])
+        #v_flux = v_flux.at[:, 0].set(v_minus_matrix @ K[:, 0])
         #jax.debug.print("now it is: {}", v_flux[:, 0])
         v_flux_diff = jnp.diff(v_flux, axis=1) / grid.dx
 
@@ -124,11 +128,12 @@ class Solver(eqx.Module):
 
         gamma = args['flux_out'] * self.flux_source_shape_func()
 
+        n = (K.T @ (V @ jnp.ones(grid.Nv)) * grid.dv).T
         nu = args['nu'] * self.collision_frequency_shape_func()
         M = self.maxwellian(grid, args)
         VM = V @ M * grid.dv
 
-        collision_term = (nu+gamma)[None, :] * VM[:, None] - K * nu[None, :]
+        collision_term = (n*nu+gamma)[None, :] * VM[:, None] - K * nu[None, :]
 
         return -v_flux_diff - E_flux + collision_term
 
@@ -166,7 +171,7 @@ class Solver(eqx.Module):
                     for sp in SPECIES }
 
 
-        Ss = ssprk2({ sp: S_of(*ys[sp]) for sp in SPECIES }, 
+        Ss = rk1({ sp: S_of(*ys[sp]) for sp in SPECIES }, 
                     step_Ss_with_E_RHS,
                     args['dt'])
 
@@ -202,8 +207,9 @@ class Solver(eqx.Module):
 
         gamma = args['flux_out'] * self.flux_source_shape_func()
 
+        n = (X.T @ S @ (V @ jnp.ones(grid.Nv)) * grid.dv).T
         nu = args['nu'] * self.collision_frequency_shape_func()
-        X_nu_gamma_vec = X @ (nu + gamma) * grid.dx
+        X_nu_gamma_vec = X @ (n*nu + gamma) * grid.dx
         X_nu_matrix = X @ jnp.diag(nu) @ X.T * grid.dx
         M = self.maxwellian(grid, args)
         VM = V @ M * grid.dv
@@ -228,7 +234,7 @@ class Solver(eqx.Module):
                                                                  {**args_of(sp), 'E': E})
                     for sp in SPECIES }
         
-        Ls = ssprk2({ sp: L_of(*ys[sp]) for sp in SPECIES },
+        Ls = rk1({ sp: L_of(*ys[sp]) for sp in SPECIES },
                     step_Ls_with_E_RHS,
                     args['dt'])
 
@@ -268,8 +274,9 @@ class Solver(eqx.Module):
 
         gamma = args['flux_out'] * self.flux_source_shape_func()
 
+        n = (X.T @ (L @ jnp.ones(grid.Nv)) * grid.dv).T
         nu = args['nu'] * self.collision_frequency_shape_func()
-        X_nu_gamma_vec = X @ (gamma + nu) * grid.dx
+        X_nu_gamma_vec = X @ (gamma + n*nu) * grid.dx
         X_nu_matrix = X @ jnp.diag(nu) @ X.T * grid.dx
         M = self.maxwellian(grid, args)
 
@@ -356,8 +363,13 @@ class Solver(eqx.Module):
 
     def ion_flux_out(self, ys):
         X, S, V = ys['ion']
-        v_matrix = V @ jnp.diag(self.grids['ion'].vs) @ V.T * self.grids['ion'].dv
-        flux_out = jnp.sum(X[:, -1].T @ S @ v_matrix.T + X[:, 0].T @ S @ v_matrix.T)
+        K = (X.T @ S).T
+        v = self.grids['ion'].vs
+        v_vec = V @ self.grids['ion'].vs * self.grids['ion'].dv
+        #v_plus = V @ jnp.where(v > 0, v, 0.0) * self.grids['ion'].dv
+        #v_minus = V @ jnp.where(v < 0, v, 0.0) * self.grids['ion'].dv
+        #v_plus = V @ self.grids['ion'].vs * self.grids['ion'].dv
+        flux_out = -(K[:, 0]).T @ v_vec + (K[:, -1]).T @ v_vec
         return flux_out
 
 
