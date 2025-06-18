@@ -48,7 +48,7 @@ class Solver():
         @jax.jit
         def scanner(carry, ys):
             y, Vp, t = carry
-            jax.debug.print("y: {}", y)
+            #jax.debug.print("y: {}", y)
             assert len(y) == 4
             Q, I, T, n = y
             Q_I = jnp.array([Q, I])
@@ -117,9 +117,9 @@ class Solver():
 
         # Newton iteration
         for i in range(3):
-            jax.debug.print("guess = {}", guess)
+            #jax.debug.print("guess = {}", guess)
             r_val = residual(guess)
-            jax.debug.print("residual = {}", r_val)
+            #jax.debug.print("residual = {}", r_val)
             J = jac_residual(guess)
             step = -jnp.linalg.solve(J, r_val)
             guess = guess + step
@@ -131,7 +131,6 @@ class Solver():
 
     def estimate_plasma_current(self, Vp):
         return {"Ip": -jnp.tanh(Vp / 2.5e4) * 1e6}
-        #return {"Ip": -Vp / 0.001}
 
 
     def step_heating_and_cooling(self, I, T, n, dt):

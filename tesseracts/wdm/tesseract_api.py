@@ -11,12 +11,14 @@ import jax
 import jax.numpy as jnp
 from pydantic import BaseModel, Field
 import mlflow
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from tesseract_core.runtime import Array, Differentiable, Float64
 from tesseract_core.runtime.tree_transforms import filter_func, flatten_with_paths
 
 from spscml.rlc_circuit.wrapper import solve_wdm
+from spscml.fusion import fusion_power
 
 #
 # Schemata
@@ -131,7 +133,7 @@ def apply(inputs: InputSchema) -> OutputSchema:
         out = apply_jit(inputs.model_dump())
 
         mlflow.log_figure(circuit_plots(out), "plots/circuit.png")
-        mlflow.log_figure(adiabat_plot(out), "plots/adiabat.png")
+        mlflow.log_figure(adiabat_plot(out, inputs.N, inputs.Lz), "plots/adiabat.png")
         mlflow.log_metric("TripleProduct", jnp.sum(out["n"] * out["T"] * inputs.dt))
 
     # Optional: Insert any post-processing that doesn't require tracing
@@ -270,20 +272,36 @@ def circuit_plots(out):
     return fig
 
 
-def adiabat_plot(out):
+def adiabat_plot(out, N, L):
     fig, ax = plt.subplots(1, 1, figsize=(10, 8))
 
     n = out["n"]
     T = out["T"]
+
     ax.loglog(n, T)
     Ts = jnp.linspace(0.1*jnp.min(T), 10*jnp.max(T))
     for adiabat in 1.5**jnp.arange(-8, 8):
         ax.loglog((Ts/T[0])**(1.5) * n[0], Ts * adiabat, color='gray', linewidth=0.5)
 
+    def fusion_power_of(n, T):
+        a = jnp.sqrt(N / n / jnp.pi)
+        return fusion_power(n, L, a, T)
+
     ax.set_xlim(0.7*jnp.min(n), 1.5*jnp.max(n))
     ax.set_ylim(0.7*jnp.min(T), 1.5*jnp.max(T))
 
+    Ts = jnp.linspace(0.7*jnp.min(T), 1.5*jnp.max(T))
+    ns = jnp.linspace(0.7*jnp.min(n), 1.5*jnp.max(n))
+    n_mesh, T_mesh = jnp.meshgrid(ns, Ts)
+    P_f = fusion_power_of(n_mesh, T_mesh)
+
+    cf = ax.contourf(n_mesh, T_mesh, P_f, alpha=0.5,
+                     cmap=plt.cm.magma, norm=mpl.colors.LogNorm(vmin=P_f.min(), vmax=P_f.max()))
+
     ax.set_xlabel("n [m^-3]")
     ax.set_ylabel("T [eV]")
+
+    cbar = fig.colorbar(cf)
+    cbar.ax.set_ylabel("Fusion power [watts]")
 
     return fig

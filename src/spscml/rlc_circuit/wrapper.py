@@ -44,7 +44,7 @@ def solve_wdm(inputs: dict) -> dict:
                              Lz=Lz)
             j = apply_tesseract(tx, tx_inputs)['j']
             Ip = j * inputs['N'] / n
-            jax.debug.print("Vp = {}, N={}, T={}, n={}, Ip = {}", Vp, inputs['N'], T, n, Ip)
+            #jax.debug.print("Vp = {}, N={}, T={}, n={}, Ip = {}", Vp, inputs['N'], T, n, Ip)
             return Ip
 
 
