@@ -23,6 +23,8 @@ def slope_limiter(a, b, limiter_type):
         return minmod3(0.5*(a+b), 2*a, 2*b)
     elif limiter_type == 'vanLeer':
         return minmod3(2*a*b/(a+b), 2*a, 2*b)
+    elif limiter_type == 'upwind':
+        return jnp.zeros_like(0)
     else:
         raise ValueError(f"Unknown limiter type `{limiter_type}`")
 
@@ -89,3 +91,27 @@ def slope_limited_flux_divergence(cell_averages, slope_limiter, numerical_flux, 
 
     F = numerical_flux(left_face_vals, right_face_vals)
     return jnp.diff(F, axis=axis) / dx
+
+
+def slope_limited_flux(cell_averages, slope_limiter, numerical_flux, dx, axis=0):
+    """
+    Computes the numerical_flux at each face.
+
+    `numerical_flux` is called like `numerical_flux(left_val, right_val)`, where the two
+    values are the piecewise linear approximation to the solution at the left and right
+    of the face.
+    """
+    face_vals = slope_limited_face_values(cell_averages, slope_limiter, axis=axis)
+    left_vals = face_vals['left']
+    right_vals = face_vals['right']
+
+    if axis == 0:
+        right_face_vals = left_vals[1:, ...]
+        left_face_vals = right_vals[:-1, ...]
+    elif axis == 1:
+        right_face_vals = left_vals[:, 1:, ...]
+        left_face_vals = right_vals[:, :-1, ...]
+
+    F = numerical_flux(left_face_vals, right_face_vals)
+    return F
+
