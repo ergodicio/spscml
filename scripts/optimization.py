@@ -12,6 +12,7 @@ from tesseract_jax import apply_tesseract
 import wdm.tesseract_api as tesseract_api
 import sheaths.tanh_sheath.tesseract_api as sheath_tesseract_api
 import jpu
+import optimistix as optx
 
 jax.config.update("jax_enable_x64", True)
 
@@ -31,17 +32,17 @@ L_tot = L - Lp
 
 # Use the initial plasma from Fig 7 of Shumlak et al. (2012) as an example
 n0 = 6e22 * ureg.m**-3
-Ip_target = -50*ureg.kA
+Ip_target = -100.0*ureg.kA
 T0 = 20.0 * ureg.eV
 
 Z = 1.0
 
-def find_initial_voltage(sheath_tx):
+def find_initial_voltage(sheath_tx, Ip_target):
     jax.debug.print("Searching for voltage that will drive {} through the plasma.", Ip_target)
 
     Vp_guess = 500.0 # [volts]
 
-    def residual(guess):
+    def residual(guess, args):
         j = apply_tesseract(sheath_tx, dict(
             n=jnp.array(n0.magnitude), T=jnp.array(T0.magnitude), Vp=jnp.array(guess), Lz=jnp.array(0.5)
             ))["j"] * (ureg.A / ureg.m**2)
@@ -50,15 +51,25 @@ def find_initial_voltage(sheath_tx):
         jax.debug.print("Ip was {}", Ip)
         return (Ip-Ip_target).magnitude
 
-    vg = jax.value_and_grad(residual)
+    solver = optx.Newton(rtol=1e-8, atol=1e-8)
+    root = optx.root_find(residual, solver, Vp_guess, max_steps=5, throw=False,
+                          options={'lower': 1.0}).value
 
-    for _ in range(5):
-        jax.debug.print("Vp = {}", Vp_guess)
-        r, g = vg(Vp_guess)
-        jax.debug.print("Residual = {}", r * ureg.A)
-        Vp_guess = jnp.maximum(1.0, Vp_guess - r / g)
+    return root
 
-    return Vp_guess
+
+# Try out grad of initial voltage first
+
+with Tesseract.from_image("vlasov_sheath") as sheath_tx:
+    Vp0 = find_initial_voltage(sheath_tx, Ip_target) * ureg.volts
+    jax.debug.print("Initial voltage: {}", Vp0)
+
+    f = lambda Ip: find_initial_voltage(sheath_tx, Ip)
+    g = jax.grad(f)(Ip_target)
+    jax.debug.print("grad: {}", g)
+
+
+sys.exit(0)
 
 
 with Tesseract.from_image("tanh_sheath") as sheath_tx:

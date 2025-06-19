@@ -5,6 +5,7 @@ import equinox as eqx
 from jaxtyping import PyTree
 from typing import Callable
 from functools import partial
+import diffrax
 from diffrax import diffeqsolve, Euler, Dopri5, ODETerm, PIDController, RESULTS, SaveAt
 
 from ..plasma import TwoSpeciesPlasma
@@ -21,6 +22,7 @@ class Solver(eqx.Module):
     flux_source_enabled: bool
     nu_ee: float
     nu_ii: float
+    adjoint_method: str
 
     """
     Solves the Vlasov-Fokker-Planck equation
@@ -29,12 +31,13 @@ class Solver(eqx.Module):
                  plasma: TwoSpeciesPlasma, 
                  grids,
                  flux_source_enabled,
-                 nu_ee, nu_ii):
+                 nu_ee, nu_ii, adjoint_method):
         self.plasma = plasma
         self.grids = grids
         self.flux_source_enabled = flux_source_enabled
         self.nu_ee = nu_ee
         self.nu_ii = nu_ii
+        self.adjoint_method = 'vjp' if adjoint_method is None else adjoint_method
 
 
     def step(self, t, fs, args):
@@ -50,6 +53,11 @@ class Solver(eqx.Module):
             'ion': initial_conditions['ion'](*self.grids['ion'].xv),
         }
 
+        if self.adjoint_method == 'jvp':
+            adjoint = diffrax.ForwardMode()
+        else:
+            adjoint = diffrax.RecursiveCheckpointAdjoint()
+
         solution = diffeqsolve(
             terms=ODETerm(self.step),
             solver=Stepper(),
@@ -60,6 +68,7 @@ class Solver(eqx.Module):
             y0=f0,
             args={"bcs": boundary_conditions, "f0": f0, "dt": dt},
             saveat=SaveAt(t1=True),
+            adjoint=adjoint,
         )
         return jax.tree.map(lambda fs: fs[0, ...], solution.ys)
 

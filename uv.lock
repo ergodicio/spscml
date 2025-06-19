@@ -1546,17 +1546,13 @@ wheels = [
 
 [[package]]
 name = "lineax"
-version = "0.0.8"
-source = { registry = "https://pypi.org/simple" }
+version = "0.0.8+novmap.2025.6.19"
+source = { git = "https://github.com/jpbrodrick89/lineax.git?rev=jpb%2Fnovmap#b8af5e9cd969c120d1d0e3fc912ad1531f800cb4" }
 dependencies = [
     { name = "equinox" },
     { name = "jax" },
     { name = "jaxtyping" },
     { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6f/75/6ad88863640c6213887c8928aef406713ecfa3c61808c563b9a3f2bf0673/lineax-0.0.8.tar.gz", hash = "sha256:bb2778066b8882acc88ff569d8e415bc5aa387f751b14ae262c9f9607d7f25bb", size = 45304 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/a9/2d8d6002eb124e79f7c9ee2311b62f35289fc7e75ee0bbfbe5a4c7295bb9/lineax-0.0.8-py3-none-any.whl", hash = "sha256:1bd21d6c41afda233769d1c1096329ee75181825c9136be65c92b41f6daa1ddb", size = 68045 },
 ]
 
 [[package]]
@@ -3149,6 +3145,7 @@ dependencies = [
     { name = "equinox" },
     { name = "jax" },
     { name = "jpu" },
+    { name = "lineax" },
     { name = "mlflow" },
     { name = "tesseract-core" },
 ]
@@ -3167,6 +3164,7 @@ requires-dist = [
     { name = "equinox", specifier = ">=0.12.2" },
     { name = "jax", specifier = ">=0.6.0" },
     { name = "jpu", specifier = ">=0.0.5" },
+    { name = "lineax", git = "https://github.com/jpbrodrick89/lineax.git?rev=jpb%2Fnovmap" },
     { name = "mlflow", specifier = ">=2.22.1" },
     { name = "tesseract-core", specifier = ">=0.9.1" },
 ]

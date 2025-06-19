@@ -60,9 +60,13 @@ def apply_helper(inputs: dict) -> dict:
     return calculate_plasma_current(**inputs)
 
 
-@eqx.filter_jit
 def apply_jit(inputs: dict) -> dict:
     out = apply_helper(inputs)
+    return dict(j=out["j_avg"])
+
+
+def apply_jit_for_jvp(inputs: dict) -> dict:
+    out = apply_helper({**inputs, 'adjoint_method': 'jvp'})
     return dict(j=out["j_avg"])
 
 
@@ -192,7 +196,7 @@ def jac_jit(
 def jvp_jit(
     inputs: dict, jvp_inputs: tuple[str], jvp_outputs: tuple[str], tangent_vector: dict
 ):
-    filtered_apply = filter_func(apply_jit, inputs, jvp_outputs)
+    filtered_apply = filter_func(apply_jit_for_jvp, inputs, jvp_outputs)
     return jax.jvp(
         filtered_apply,
         [flatten_with_paths(inputs, include_paths=jvp_inputs)],
