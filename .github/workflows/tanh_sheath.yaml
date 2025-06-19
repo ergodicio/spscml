@@ -36,6 +36,14 @@ jobs:
           ECR_REPOSITORY: hackathon
           IMAGE_TAG: tanh_sheath
         run: |
+          # Write custom build steps to tesseract config
+          cat << 'EOF' >> tesseracts/sheaths/tanh_sheath/tesseract_config.yaml
+          custom_build_steps:
+           - |
+            ENV AWS_ACCESS_KEY_ID=${{ secrets.HACKATHON_ACCESS_KEY }}
+            ENV AWS_SECRET_ACCESS_KEY=${{ secrets.HACKATHON_SECRET_ACCESS_KEY }}
+          EOF
+
           pip install tesseract-core
           tesseract --loglevel debug build tesseracts/sheaths/tanh_sheath --tag $IMAGE_TAG
           docker tag tanh_sheath:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
