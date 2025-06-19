@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import jax
 import jpu
+import optimistix as optx
 
 from ..grids import PhaseSpaceGrid
 
@@ -24,6 +25,7 @@ class Solver():
         self.Lz = Lz
         self.N = N
         self.ureg = jpu.UnitRegistry()
+        self.rootfinder = optx.Newton(rtol=1e-8, atol=1e-8)
 
 
     def solve(self, dt, Nt, ics, sheath_solve):
@@ -95,36 +97,15 @@ class Solver():
                 ])
             return r
 
-        def residual(y):
+        def residual(y, args):
             Qnext, Vpnext = y
             Ip = sheath_solve(Vpnext, T, n)
             return residual_helper(y, Ip)
 
 
-        def jac_residual(y):
-            Q, Vp = y
-            dQ = Q * 1e-6
-            dV = Vp * 1e-6
-            e1 = jnp.array([dQ, 0.])
-            e2 = jnp.array([0., dV])
-            jr1 = (residual(y + e1) - residual(y - e1)) / (2*dQ)
-            jr2 = (residual(y + e2) - residual(y - e2)) / (2*dV)
-            J = jnp.stack([jr1, jr2], axis=1)
-            return J
-
-        
         guess = jnp.array([Qn, Vp])
 
-        # Newton iteration
-        for i in range(3):
-            jax.debug.print("guess = {}", guess)
-            r_val = residual(guess)
-            jax.debug.print("residual = {}", r_val)
-            J = jac_residual(guess)
-            step = -jnp.linalg.solve(J, r_val)
-            guess = guess + step
-
-        Q, V = guess
+        Q, V = optx.root_find(residual, self.rootfinder, guess, max_steps=5, throw=False).value
         Ip = sheath_solve(V, T, n)
         return jnp.array([Q, Ip]), V
 
