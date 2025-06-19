@@ -103,8 +103,8 @@ def create_or_update_tesseract_service(tesseract_name):
 def register_task_definition(ecs_client, new_container_def, family_name):
     new_task_definition = ecs_client.register_task_definition(
         family=family_name,
-        cpu="512",
-        memory="4096",
+        cpu="2048",
+        memory="8192",
         containerDefinitions=[new_container_def],
         networkMode="awsvpc",
         requiresCompatibilities=["EC2"],
