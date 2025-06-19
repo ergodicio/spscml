@@ -20,6 +20,9 @@ from tesseract_core.runtime.tree_transforms import filter_func, flatten_with_pat
 from spscml.rlc_circuit.wrapper import solve_wdm
 from spscml.fusion import fusion_power
 
+jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_debug_nans", True)
+
 #
 # Schemata
 #

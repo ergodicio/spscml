@@ -39,10 +39,16 @@ def apply_jit(inputs: dict) -> dict:
     j_sat = 0.5 * ureg.e * n * c_S
 
     alpha = (Vp * ureg.e / T).to('').magnitude
+    log_lambda = 10
+    eta_spitzer = (2*ureg.m_e)**0.5 * ureg.e**2 * log_lambda / (1.96*12*jnp.pi**1.5 * ureg.epsilon_0**2 * T**1.5)
+    E = Vp / (inputs["Lz"]*ureg.m)
 
-    j = -jnp.tanh(alpha) * j_sat
+    j_eta = -(E / eta_spitzer).to(ureg.A / ureg.m**2)
+    j_sheath = (-jnp.tanh(alpha) * j_sat)
+    # Values are negative, so take the maximum
+    j = jnp.maximum(j_eta.magnitude, j_sheath.magnitude)
 
-    result = dict(j=j.to(ureg.ampere / ureg.m**2).magnitude)
+    result = dict(j=j)
     return result
 
 

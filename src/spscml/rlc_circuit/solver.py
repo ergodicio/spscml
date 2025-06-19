@@ -48,7 +48,8 @@ class Solver():
         @jax.jit
         def scanner(carry, ys):
             y, Vp, t = carry
-            #jax.debug.print("y: {}", y)
+            jax.debug.print("t = {}", t)
+            jax.debug.print("y: {}", y)
             assert len(y) == 4
             Q, I, T, n = y
             Q_I = jnp.array([Q, I])

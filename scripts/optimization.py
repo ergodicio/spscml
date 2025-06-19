@@ -62,7 +62,7 @@ def find_initial_voltage(sheath_tx):
 
 
 with Tesseract.from_image("tanh_sheath") as sheath_tx:
-    Vp0 = find_initial_voltage(sheath_tx)
+    Vp0 = find_initial_voltage(sheath_tx) * ureg.volts
 
     j = sheath_tx.apply(dict(
         n=n0.magnitude, T=T0.magnitude, Vp=Vp0.magnitude, Lz=0.5
@@ -82,6 +82,6 @@ with Tesseract.from_image("tanh_sheath") as sheath_tx:
             R=R, L=L, C=C,
             sheath_tesseract_url=sheath_tx._client.url,
             dt=5e-8,
-            t_end=2e-7,
+            t_end=1e-5,
         ))
 
