@@ -50,6 +50,7 @@ def create_or_update_tesseract_service(tesseract_name):
     )
 
     if service_found:
+        print("Updating existing service: {}".format(this_service))
         ecs_client.update_service(
             cluster=cluster,
             service=this_service,
@@ -58,6 +59,7 @@ def create_or_update_tesseract_service(tesseract_name):
         )
 
     else:
+        print("Creating new service for tesseract: {}".format(tesseract_name))
         sd = boto3.client("servicediscovery")
         logs = session.client("logs")
         logs.create_log_group(logGroupName=log_group_name)
@@ -103,8 +105,8 @@ def create_or_update_tesseract_service(tesseract_name):
 def register_task_definition(ecs_client, new_container_def, family_name):
     new_task_definition = ecs_client.register_task_definition(
         family=family_name,
-        cpu="2048",
-        memory="8192",
+        cpu="512",
+        memory="2048",
         containerDefinitions=[new_container_def],
         networkMode="awsvpc",
         requiresCompatibilities=["EC2"],
@@ -129,4 +131,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     tesseract_name = args.tesseract
 
-    create_or_update_tesseract_service(tesseract_name)
+    print(create_or_update_tesseract_service(tesseract_name))
