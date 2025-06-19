@@ -53,4 +53,4 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.HACKATHON_SECRET_ACCESS_KEY }}
         run: |
             pip install boto3
-            python tesseracts/container_management.py --tesseract wdm
+            python tesseracts/container_management.py --tesseract tanh_sheath
