@@ -44,21 +44,12 @@ def create_or_update_tesseract_service(tesseract_name):
         "command": ["serve", "--host", "0.0.0.0"],
     }
 
+    family_name = tesseract_name + "-family"
+    new_task_definition = register_task_definition(
+        ecs_client, new_container_def, family_name
+    )
+
     if service_found:
-        for td in ecs_client.list_task_definitions()["taskDefinitionArns"]:
-            if tesseract_name in td:
-                this_task_definition = td
-
-        family_name = this_task_definition[
-            this_task_definition.find("task-definition")
-            + len("task-definition")
-            + 1 : this_task_definition.rfind(":")
-        ]
-
-        new_task_definition = register_task_definition(
-            ecs_client, new_container_def, family_name
-        )
-
         ecs_client.update_service(
             cluster=cluster,
             service=this_service,
@@ -70,11 +61,6 @@ def create_or_update_tesseract_service(tesseract_name):
         sd = boto3.client("servicediscovery")
         logs = session.client("logs")
         logs.create_log_group(logGroupName=log_group_name)
-
-        family_name = tesseract_name + "-family"
-        new_task_definition = register_task_definition(
-            ecs_client, new_container_def, family_name
-        )
 
         response = sd.create_service(
             Name=tesseract_name,
