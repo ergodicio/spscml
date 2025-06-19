@@ -5,6 +5,7 @@
 ../../../../spscml
 jax[cpu]
 equinox
+boto3
 
 # This may contain private dependencies via SSH URLs:
 # git+ssh://git@github.com/username/repo.git@branch

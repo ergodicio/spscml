@@ -45,5 +45,12 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: hackathon
         run: |
-          
           docker push --all-tags $ECR_REGISTRY/$ECR_REPOSITORY
+
+      - name: Deploy to AWS ECS
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.HACKATHON_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.HACKATHON_SECRET_ACCESS_KEY }}
+        run: |
+            pip install boto3
+            python tesseracts/container_management.py --tesseract wdm
