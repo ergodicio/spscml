@@ -16,6 +16,7 @@ class PhaseSpaceGrid(eqx.Module):
     vT: Array
     xv: tuple[Array]
     laplacian: Array
+    laplacian_diagonals: tuple[Array]
 
     def __init__(self, Lx, vmax, Nx, Nv):
         self.Lx = Lx
@@ -36,6 +37,13 @@ class PhaseSpaceGrid(eqx.Module):
         self.xv = jnp.meshgrid(self.xs, self.vs, indexing='ij')
 
         self.laplacian = laplacian(Nx, dx)
+        L = self.laplacian
+        self.laplacian_diagonals = (
+            jnp.append(0., jnp.diagonal(L, offset=-1)),
+            jnp.diagonal(L),
+            jnp.append(jnp.diagonal(L, offset=1), 0.)
+        )
+
 
 
 class Grid():
@@ -48,6 +56,12 @@ class Grid():
 
         self.xs = jnp.linspace(-Lx/2 + dx/2, Lx/2 - dx/2, Nx)
         self.laplacian = laplacian(Nx, dx)
+        L = self.laplacian
+        self.laplacian_diagonals = (
+            jnp.append(0., jnp.diagonal(L, offset=-1)),
+            jnp.diagonal(L),
+            jnp.append(jnp.diagonal(L, offset=1), 0.)
+        )
 
 
     def extend_to_phase_space(self, vmax, Nv):

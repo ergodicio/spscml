@@ -41,7 +41,7 @@ class Solver(eqx.Module):
         nonstiff_rhs = lambda f: self.vlasov_rhs(f, args["bcs"], args["f0"])
         stiff_rhs = self.explicit_collisions_rhs
         stiff_implicit_solver = self.implicit_collisions
-        return imex_ssp2(fs, nonstiff_rhs, stiff_rhs, stiff_implicit_solver, args["dt"])
+        return ssprk2(fs, nonstiff_rhs, args["dt"])
 
 
     def solve(self, dt, Nt, initial_conditions, boundary_conditions, dtmax):
@@ -87,10 +87,10 @@ class Solver(eqx.Module):
         
         electron_rhs = self.vlasov_fp_single_species_rhs(fe, E, self.plasma.Ae, self.plasma.Ze, 
                                                          self.grids['electron'],
-                                                         boundary_conditions['electron'])
+                                                         boundary_conditions['electron'], self.nu_ee)
         ion_rhs = self.vlasov_fp_single_species_rhs(fi, E, self.plasma.Ai, self.plasma.Zi, 
                                                          self.grids['ion'],
-                                                         boundary_conditions['ion'])
+                                                         boundary_conditions['ion'], self.nu_ii)
 
         if self.flux_source_enabled:
             ion_particle_flux = first_moment(fi, self.grids['ion'])
@@ -179,7 +179,7 @@ class Solver(eqx.Module):
         return jnp.expand_dims(h, axis=1)
 
 
-    def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs):
+    def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs, nu):
         # free streaming term
         f_bc_x = self.apply_bcs(f, bcs, 'x')
 
@@ -198,8 +198,22 @@ class Solver(eqx.Module):
         Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', F, grid.dv, axis=1)
 
         # TODO: implement Fokker-Planck operator
+        n = zeroth_moment(f, grid)
+        M = self.maxwellian(A, grid)
+        nu = nu * self.collision_frequency_shape_func().flatten()
+    
+        BGK = nu[:, None] * (n[:, None] * M[None, :] - f)
 
-        return -vdfdx - Edfdv
+        return -vdfdx - Edfdv + BGK
+
+
+    def maxwellian(self, A, grid):
+        v = grid.vs
+        T = 1.0
+        n = 1.0
+        theta = T / A
+        M = n / (jnp.sqrt(2*jnp.pi*theta)) * jnp.exp(-v**2 / (2*theta))
+        return M
 
 
     def apply_bcs(self, f, bcs, dim):

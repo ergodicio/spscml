@@ -57,8 +57,8 @@ def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
 
     Nx = Lz_LAMBDA_D*2
     x_grid = Grid(Nx, Lz_LAMBDA_D)
-    ion_grid = x_grid.extend_to_phase_space(6*vti, 64)
-    electron_grid = x_grid.extend_to_phase_space(6*vte, 64)
+    ion_grid = x_grid.extend_to_phase_space(6*vti, 128)
+    electron_grid = x_grid.extend_to_phase_space(6*vte, 128)
 
     initial_conditions = { 
         'electron': lambda x, v: 1 / (jnp.sqrt(2*jnp.pi)*vte) * jnp.exp(-plasma.Ae*(v**2) / (2*Te)),

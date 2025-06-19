@@ -262,21 +262,37 @@ so that the ratio of volumetric densities is determined by $T'$.
 
 \section{Vlasov discretizations}
 
-The governing kinetic equation for our study is the 1D1V Vlasov-Fokker-Planck equation in
+The governing kinetic equation for our study is the 1D1V Vlasov-BGK equation in
 the ``flexible plasma normalization'' \cite{millerMultispecies13momentModel2016}:
 \begin{align}
-    \label{eqn:vlasov_fp}
-    \partial_t f_s + v \partial_x f_s + (\omega_c \tau) \frac{Z_s}{A_s} E \partial_v f_s &= Q(f_s) \\
-                                                                                         &= \nu_s(x) \partial_v \left( \frac{T_{0}}{A_s} \partial_v f_s + v f_s \right).
+    \label{eqn:vlasov_bgk}
+    \partial_t f_s + v \partial_x f_s + (\omega_c \tau) \frac{Z_s}{A_s} E \partial_v f_s &= Q(f_s) + \Gamma_s
 \end{align}
-The collision operator $Q$ is a linearized version of the Dougherty-Fokker-Planck operator about an equilibrium
-distribution with temperature $T_{0}$ and velocity $u = 0$.
+The collision operator $Q$ is a linearized version of the BGK collision operator about an equilibrium
+distribution with temperature $T_{0}$ and velocity $u = 0$:
+\begin{align*}
+    Q(f_s) &= \nu_s(x) (M_s(v) - f_s),
+\end{align*}
+where
+\begin{align*}
+    M_s(v) = \frac{1}{(2\pi T_0/A_s)^{1/2}} \exp \left( -\frac{A_s|v|^2}{2T_0} \right).
+\end{align*}
 The collision frequency $\nu_s(x)$ is spatially dependent, since we apply an increased collision frequency in the center of the domain
 in order to simulate equilibration with the bulk plasma.
 The physical mean free path is many thousands of Debye lengths, but our simulation domain is only a few hundred.
 Increasing $\nu$ lets us obtain a Maxwellian distribution in the center of the domain.
 
-The normalization constants appearing in this equation are as follows:
+The term $\Gamma_s$ is a source term localized to the center of the domain that serves to replenish particles lost to
+the absorbing wall:
+\begin{align*}
+    \Gamma_s = \gamma(x) M_s(v) = \left( \frac{1}{L_s} - \frac{|x|}{L_s^2} \right) F_{out} M_s(v),
+\end{align*}
+where $F_{out}$ is the flux of \emph{ions} out of the domain:
+\begin{align*}
+    F_{out} = \int v \left( f_i \vert_{x=-L/2} + f_i \vert_{x=L/2} \right) \, \mathrm{d} v
+\end{align*}
+
+The normalization constants appearing in Equation \eqref{eqn:vlasov_bgk} are as follows:
 \begin{itemize}
     \item $Z_s$ and $A_s$ are the normalized charge and mass of species $s$, expressed in units of the proton charge and mass.
     \item $\omega_c \tau$ is the normalized reference proton cyclotron frequency in a field $B_0$ which would give unit plasma beta: $|B_0|^2 / 2 \mu_0 = n_0 T_0$.
@@ -284,7 +300,7 @@ The normalization constants appearing in this equation are as follows:
 For now we can take these normalization constants as given; we will need to concern ourselves with their definitions when we
 move on to translating a specific physical problem into our equation setup.
 
-Equation \eqref{eqn:vlasov_fp} is coupled to the normalized Gauss's law,
+Equation \eqref{eqn:vlasov_bgk} is coupled to the normalized Gauss's law,
 \begin{align}
 \partial_x E = \frac{(\omega_p \tau)^2}{\omega_c \tau} \rho_c,
 \end{align}
@@ -321,60 +337,47 @@ We use the IMEX-SSP2(2, 2, 2) L-stable scheme:
             &\qquad \qquad + \Delta t \left( \frac{1}{2} Q(f^{(1)}) + \frac{1}{2} Q(f^{(2)}) \right) 
 \end{align*}
 
-\subsection{Robust conservative DLR scheme}
+First-order derivatives are discretized using a slope-limited MUSCL scheme with direct upwinding based on the
+sign of the flux ($v$ or $E$).
+The collisional term is implemented using a centered finite difference scheme based on the Maxwellian
+form of the collision operator, Equation \eqref{eqn:maxwellian_collisional}.
 
-This is a multispecies extension of the single-species scheme with Legendre weight function 
-described in \cite{coughlinRobustConservativeDynamical2024}.
-We begin by expanding each species distribution function as a sum of a macro and micro component:
-\begin{align*}
-f_s(x, v, t) = \mathcal{N}_s(x, v, t) + g_s(x, v, t).
-\end{align*}
-For each species, let $v_{ts} = \sqrt{T_0 / A_s}$ be the reference thermal velocity.
-The velocity domain is chosen as some fixed number of thermal velocities:
-\begin{align*}
-    \Omega_{vs} = [-v_{max,s}, v_{max,s}],
-\end{align*}
-with the constant weight function $w(v) = \frac{1}{v_{max,s}}$.
-The orthonormal polynomial family is the scaled Legendre polynomials,
-\begin{align*}
-    p_{0s}(v) &= \sqrt{\frac{1}{2}} \\
-    p_{1s}(v) &= \sqrt{\frac{3}{2}} \frac{v}{v_{max,s}} \\
-    p_{2s}(v) &= \sqrt{\frac{5}{8}} \left( 3 \left( \frac{v}{v_{max,s}} \right)^2 - 1 \right)  \\
-    p_{3s}(v) &= \sqrt{\frac{7}{8}} \left( 5 \left( \frac{v}{v_{max,s}} \right)^3 - 3 \frac{v}{v_{max,s}} \right). 
-\end{align*}
+\subsection{Straightforward DLR scheme}
 
-In a multispecies context, we must derive expressions for the momentum and energy transfer between
-species due to collisions.
-This will require a modification to equation (2.12) of \cite{coughlinRobustConservativeDynamical2024}.
+This is a multispecies, collisional extension of the single-species scheme described in
+\cite{einkemmerLowRankProjectorSplittingIntegrator2018}.
+We give each species a low-rank ansatz:
+\begin{align*}
+    f(x, v, t) = \sum_{ij} X_i(x, t) S_{ij}(t) V_j(v, t)
+\end{align*}
+The time integration is accomplished with the projector-splitting integrator using a first-order
+Lie-Trotter splitting.
+Boundary conditions in $x$ must be applied to the $K$ basis functions, rather than $X$; this slightly modifies
+the form of the $\partial_x X$ terms in the S and L substeps.
 
-For the zeroth moment, we have
+\subsubsection{Low-rank substeps}
+
+\textbf{K step:}
 \begin{align*}
-    \int_{\Omega_v} p_{0s}(v) Q_{s s'}(f_s) \, \mathrm{d} v &= 0
-\end{align*}
-by conservation of particles.
-For the first moment,
-\begin{align*}
-    \int_{\Omega_v} p_{1s}(v) Q_{s s'} (f_s) \, \mathrm{d} v &= (\nu_p \tau) \nu_{s s'} \int_{\Omega_v} p_{1s}(v)  \partial_v \left( \frac{T_{s s'}}{A_s} \partial_v f_s + (v - u_{s s'}) f_s \right)  \, \mathrm{d} v \\
-                                                             &= -(\nu_p \tau) \nu_{s s'} \int_{\Omega_v} p'_{1s}(v) \left( \frac{T_{s s'}}{A_s} \partial_v f_s + (v - u_{s s'}) f_s \right) \, \mathrm{d} v \\
-                                                             &= -(\nu_p \tau) \nu_{s s'} d_{10} \int_{\Omega_v} p_{0s}(v) \left( \frac{T_{s s'}}{A_s} \partial_v f_s + (v - u_{s s'}) f_s \right) \, \mathrm{d} v \\
-                                                             &= -(\nu_p \tau) \nu_{s s'} d_{10} \int_{\Omega_v} [ v p_{0s}(v) - u_{s s'} p_{0s}(v) ] f_s \, \mathrm{d} v \\
-                                                             &= -(\nu_p \tau) \nu_{s s'} d_{10} \int_{\Omega_v} [ a_0 p_{1s} (v) + b_0 p_{0s}(v) - u_{s s'} p_{0s}(v) ] f_s \, \mathrm{d} v \\
-                                                             &= -(\nu_p \tau) \nu_{s s'} d_{10} \left[ a_0 f_{1s} + b_0 f_{0s} - u_{s s'} f_{0s} \right].
-\end{align*}
-For the second moment,
-\begin{align*}
-    \int_{\Omega_v} p_{2s}(v) Q_{s s'} (f_s) \, \mathrm{d} v &= (\nu_p \tau) \nu_{s s'} \int_{\Omega_v} p_{2s}(v)  \partial_v \left( \frac{T_{s s'}}{A_s} \partial_v f_s + (v - u_{s s'}) f_s \right)  \, \mathrm{d} v \\
-&= -(\nu_p \tau) \nu_{s s'} \int_{\Omega_v} p_{2s}'(v) \left( \frac{T_{s s'}}{A_s} \partial_v f_s + (v - u_{s s'}) f_s \right)  \, \mathrm{d} v \\
-&= -(\nu_p \tau) \nu_{s s'} \int_{\Omega_v} [d_{21} p_{1s}(v) + d_{20} p_{0s}(v)] \left( \frac{T_{s s'}}{A_s} \partial_v f_s + (v - u_{s s'}) f_s \right) \, \mathrm{d} v \\
-&= -(\nu_p \tau) \nu_{s s'} \int_{\Omega_v} \left[ -d_{21} \frac{T_{s s'}}{A_s} p'_{1s}(v) + d_{21} p_{1s}(v) (v - u_{s s'}) + d_{20} p_{0s}(v) (v - u_{s s'}) \right] f_s  \, \mathrm{d} v \\
-&= -(\nu_p \tau) \nu_{s s'} \left[ -d_{21} d_{10} \frac{T_{s s'}}{A_s} f_{0s} + d_{21} \left( a_1 f_{2s} + b_1 f_{1s} + a_0 f_{0s} - u_{s s'} f_{1s} \right) + d_{20} \left( a_0 f_{1s} + b_0 f_{0s} - u_{s s'} f_{0s} \right)   \right] 
+    \partial_t K_j &= -\sum_{l=1}^r \left\langle V_j, v^+ V_l \right\rangle_v D_+ K_l(x, t) - \sum_{l=1}^r \left\langle V_j, v^- V_l \right\rangle_v D_- K_l(x, t)  \\
+                         &\quad - (\omega_c \tau) \frac{Z}{A} \left[ \sum_{l=1}^r \left\langle V_j, D_+ V_l \right\rangle_v E_+ K_l(x, t) + \sum_{l=1}^r \left\langle V_j, D_- V_l \right\rangle_v E_- K_l(x, t) \right] \\
+                         &\quad + (\nu(x) + \gamma(x)) \left\langle V_j, M \right\rangle_v - \sum_{l=1}^r \nu(x)  \left\langle V_j, V_l \right\rangle_v K_l(x, t)
 \end{align*}
 
-The macro equations are therefore
+\textbf{S step:}
 \begin{align*}
-\partial_t \begin{pmatrix}
-f_0 \\ f_1 \\ f_2
-\end{pmatrix}_s
+    \partial_t S_{ij} &= \sum_{l=1}^r \left\langle V_j, v^+ V_l \right\rangle_v \left\langle X_i, D_+ K_l \right\rangle_x + \sum_{l=1}^r \left\langle V_j, v^- V_l \right\rangle_v \left\langle X_i, D_- K_l \right\rangle_x \\
+                      &\quad + (\omega_c \tau) \frac{Z}{A} \left[ \sum_{k,l=1}^r \left\langle V_j, D_+ V_l \right\rangle_v \left\langle X_i, E_+ X_k \right\rangle_x S_{kl} + \sum_{k,l=1}^r \left\langle V_j, D_- V_l \right\rangle_v \left\langle X_i, E_- X_k \right\rangle_x S_{kl} \right] \\
+                      &\quad - \left\langle X_i, \nu(x) +\gamma(x) \right\rangle_x \left\langle V_j, M \right\rangle_v + \sum_{k,l=1}^r \left\langle X_i, \nu(x) X_k \right\rangle_x \left\langle V_j, V_l \right\rangle_v  S_{kl}
 \end{align*}
+
+\textbf{L step:}
+\begin{align*}
+    \partial_t L_i &= -\sum_{l=1}^r v^+ V_l \left\langle X_i, D_+ K_l \right\rangle_x - \sum_{l=1}^r v^- V_l \left\langle X_i, D_- K_l \right\rangle_x \\
+                   &\quad - (\omega_c \tau) \frac{Z}{A} \left[ \sum_{k=1}^r \left\langle X_i, E_+ X_k \right\rangle_x D_+ L_k + \sum_{k=1}^r \left\langle X_i, E_- X_k \right\rangle_x D_- L_k  \right] \\
+                   &\quad + \left\langle X_i, \nu(x) + \gamma(x) \right\rangle_x M - \sum_{k=1}^r \left\langle X_i, \nu(x) X_k \right\rangle L_k
+\end{align*}
+
+
 
 \end{document}
