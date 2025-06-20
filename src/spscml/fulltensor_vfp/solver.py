@@ -146,30 +146,11 @@ class Solver(eqx.Module):
                                               grid.dx,
                                               axis=0)
 
-        # electrostatic acceleration term
-        f_bc_v = self.apply_bcs(f, bcs, 'v')
+        # HACKATHON: implement E*df/dv term
 
-        E = jnp.expand_dims(E, axis=1)
-        fac = self.plasma.omega_c_tau * Z / A
-        F = lambda left, right: jnp.where(fac * E > 0, left * fac * E, right * fac * E)
-        Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', F, grid.dv, axis=1)
+        # HACKATHON: implement BGK collision term
 
-        n = zeroth_moment(f, grid)
-        M = self.maxwellian(A, grid)
-        nu = nu * self.collision_frequency_shape_func().flatten()
-    
-        BGK = nu[:, None] * (n[:, None] * M[None, :] - f)
-
-        return -vdfdx - Edfdv + BGK
-
-
-    def maxwellian(self, A, grid):
-        v = grid.vs
-        T = 1.0
-        n = 1.0
-        theta = T / A
-        M = n / (jnp.sqrt(2*jnp.pi*theta)) * jnp.exp(-v**2 / (2*theta))
-        return M
+        return -vdfdx
 
 
     def apply_bcs(self, f, bcs, dim):
