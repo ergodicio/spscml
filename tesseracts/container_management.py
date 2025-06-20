@@ -83,6 +83,7 @@ def create_or_update_tesseract_service(tesseract_name):
                 "awsvpcConfiguration": {
                     "subnets": [
                         "subnet-0fa0f789e06ae28f9",
+                        "subnet-00baf77a953fe5698",
                     ],
                     "securityGroups": ["sg-0f35111be1df8c52e"],
                     "assignPublicIp": "DISABLED",
@@ -110,6 +111,7 @@ def register_task_definition(ecs_client, new_container_def, family_name):
         containerDefinitions=[new_container_def],
         networkMode="awsvpc",
         requiresCompatibilities=["EC2"],
+        taskRoleArn="arn:aws:iam::106231741818:role/Calculator",
     )
 
     return new_task_definition
