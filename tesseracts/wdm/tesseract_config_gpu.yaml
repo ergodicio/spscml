@@ -1,0 +1,9 @@
+# Tesseract configuration file for GPU deployment
+
+name: "wdm"
+version: "0+unknown"
+description: ""
+
+build_config:
+  base_image: "nvidia/cuda:12.2-devel-ubuntu22.04"
+  target_platform: "native"
