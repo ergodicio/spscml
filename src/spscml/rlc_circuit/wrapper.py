@@ -15,7 +15,8 @@ def solve_wdm(inputs: dict) -> dict:
     Lp = Lp_prime * Lz
     wdm_solver = Solver(
         R=inputs['R'], L=inputs['L'], C=inputs['C'], Lp=Lp,
-        V0=inputs['Vc0'], Lz=Lz, N=inputs['N'])
+        V0=inputs['Vc0'], Lz=Lz, N=inputs['N'],
+        mlflow_run_id=inputs['mlflow_run_id'])
 
     ## Initial conditions
     Ip0 = inputs['Ip0']
