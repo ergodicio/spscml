@@ -111,7 +111,8 @@ def register_task_definition(ecs_client, new_container_def, family_name):
         containerDefinitions=[new_container_def],
         networkMode="awsvpc",
         requiresCompatibilities=["EC2"],
-        taskRoleArn="arn:aws:iam::106231741818:role/Calculator",
+        taskRoleArn="arn:aws:iam::106231741818:role/continuum-hackathonmlfstaskdefTaskRole6B9D66CE-sMELLebLsQrC",
+        # placementConstraints=[{"type": "distinctInstance", "expression": ""}],
     )
 
     return new_task_definition
