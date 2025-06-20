@@ -3,3 +3,5 @@ version: "0.1.0"
 
 build_config:
   base_image: "nvidia/cuda:12.2.0-devel-ubuntu22.04"
+  custom_build_steps:
+    - "RUN apt-get update && apt-get install -y python3-pip python3-setuptools python3-distutils"
