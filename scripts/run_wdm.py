@@ -34,8 +34,7 @@ n0 = 6e22 * ureg.m**-3
 
 Z = 1.0
 
-#with Tesseract.from_image("vlasov_sheath", volumes=["/Users/jack/src/spscml/mlruns:/tesseract/mlruns"]) as sheath_tx:
-with Tesseract.from_url("http://127.0.0.1:58801") as sheath_tx:
+with Tesseract.from_image("vlasov_sheath") as sheath_tx:
     Vp0 = 500.0 * ureg.volts
 
     T0 = 20.0 * ureg.eV
