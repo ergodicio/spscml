@@ -15,7 +15,8 @@ def solve_wdm(inputs: dict) -> dict:
     Lp = Lp_prime * Lz
     wdm_solver = Solver(
         R=inputs['R'], L=inputs['L'], C=inputs['C'], Lp=Lp,
-        V0=inputs['Vc0'], Lz=Lz, N=inputs['N'])
+        V0=inputs['Vc0'], Lz=Lz, N=inputs['N'],
+        mlflow_run_id=inputs['mlflow_run_id'])
 
     ## Initial conditions
     Ip0 = inputs['Ip0']
@@ -36,7 +37,6 @@ def solve_wdm(inputs: dict) -> dict:
     Nt = int(inputs['t_end'] / dt)
 
     with Tesseract.from_url(inputs['sheath_tesseract_url']) as tx:
-        #@jax.custom_jvp
         def sheath_solve(Vp, T, n):
             tx_inputs = dict(Vp=jnp.array(Vp),
                              n=jnp.array(n),
@@ -44,27 +44,7 @@ def solve_wdm(inputs: dict) -> dict:
                              Lz=Lz)
             j = apply_tesseract(tx, tx_inputs)['j']
             Ip = j * inputs['N'] / n
-            jax.debug.print("Vp = {}, N={}, T={}, n={}, Ip = {}", Vp, inputs['N'], T, n, Ip)
             return Ip
-
-
-        # The argument order is correct: https://docs.jax.dev/en/latest/advanced-autodiff.html#jax-custom-jvp-with-nondiff-argnums
-        """
-        @sheath_solve.defjvp
-        def sheath_solve_jvp(primals, tangents):
-            V, T, n = primals
-            Vdot, Tdot, ndot = tangents
-            # primal_out = sheath_solve(V, T, n)
-            # T and V are in comparable units, so h can be relative to V.
-            h = V * 1e-7
-            Ip1 = sheath_solve(V+h, T, n)
-            Ip2 = sheath_solve(V-h, T, n)
-            # Save an evaluation by estimating Ip(V) as the average of these two
-            primal_out = 0.5*(Ip1 + Ip2)
-            tangent_out = (Ip1 - Ip2) / (2*h) * Vdot
-            return primal_out, tangent_out
-        """
-
 
         _, solution = wdm_solver.solve(dt, Nt, ics, sheath_solve)
 

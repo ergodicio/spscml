@@ -28,7 +28,6 @@ def reduced_mfp_for_sim(norm, Ae, Lz):
     return Lz_LAMBDA_D / 4
 
 
-@jax.jit
 def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
     '''
     Calculates the plasma current carried by a plasma with the given temperature and
@@ -88,9 +87,13 @@ def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
     nu_ee = vte / sim_mfp
     nu_ii = vti / sim_mfp
 
+    if 'adjoint_method' in kwargs:
+        adjoint_method = kwargs['adjoint_method']
+    else:
+        adjoint_method = None
     solver = Solver(plasma, 
                     {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid},
-                    flux_source_enabled=True, nu_ee=nu_ee, nu_ii=nu_ii)
+                    flux_source_enabled=True, nu_ee=nu_ee, nu_ii=nu_ii, adjoint_method=adjoint_method)
 
     s = 0.5
     dtmax = jnp.minimum(s * x_grid.dx / (6*vte), nu_ee / electron_grid.dv**2)

@@ -11,12 +11,17 @@ import jax
 import jax.numpy as jnp
 from pydantic import BaseModel, Field
 import mlflow
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from tesseract_core.runtime import Array, Differentiable, Float64
 from tesseract_core.runtime.tree_transforms import filter_func, flatten_with_paths
 
 from spscml.rlc_circuit.wrapper import solve_wdm
+from spscml.fusion import fusion_power
+
+jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_debug_nans", True)
 
 #
 # Schemata
@@ -124,14 +129,16 @@ def apply(inputs: InputSchema) -> OutputSchema:
     with mlflow.start_run(run_name="Whole-device model solve", 
                           parent_run_id=inputs.mlflow_parent_run_id) as mlflow_run:
         inputs_dict = inputs.model_dump()
+        inputs_dict['mlflow_run_id'] = mlflow_run.info.run_id
+
         for param in ["Vc0", "Ip0", "a0", "N", "Lp_prime", "Lz", 
                       "R", "L", "C"]:
             mlflow.log_param(param, inputs_dict[param])
 
-        out = apply_jit(inputs.model_dump())
+        out = apply_jit(inputs_dict)
 
         mlflow.log_figure(circuit_plots(out), "plots/circuit.png")
-        mlflow.log_figure(adiabat_plot(out), "plots/adiabat.png")
+        mlflow.log_figure(adiabat_plot(out, inputs.N, inputs.Lz), "plots/adiabat.png")
         mlflow.log_metric("TripleProduct", jnp.sum(out["n"] * out["T"] * inputs.dt))
 
     # Optional: Insert any post-processing that doesn't require tracing
@@ -270,15 +277,36 @@ def circuit_plots(out):
     return fig
 
 
-def adiabat_plot(out):
+def adiabat_plot(out, N, L):
     fig, ax = plt.subplots(1, 1, figsize=(10, 8))
 
     n = out["n"]
     T = out["T"]
-    ax.loglog(n, T)
+
+    def fusion_power_of(n, T):
+        a = jnp.sqrt(N / n / jnp.pi)
+        return fusion_power(n, L, a, T)
+
+    Ts = jnp.geomspace(0.7*jnp.min(T), 1.5*jnp.max(T), 100)
+    ns = jnp.geomspace(0.7*jnp.min(n), 1.5*jnp.max(n), 100)
+    n_mesh, T_mesh = jnp.meshgrid(ns, Ts)
+    P_f = fusion_power_of(n_mesh, T_mesh)
+    P_f_levels = jnp.geomspace(1e-6, 1e18, 13)
+    
+    cmap=plt.cm.plasma.copy()
+    cmap.set_under('white')
+    cf = ax.contourf(n_mesh, T_mesh, P_f, alpha=0.5, levels=P_f_levels,
+                     cmap=cmap, norm=mpl.colors.LogNorm(vmin=1e-6, vmax=1e18), 
+                     vmin=1e-6, vmax=1e18, extend='both')
+    
+    cbar = fig.colorbar(cf, extend='both')
+    cbar.ax.set_ylabel("Fusion power [watts]")
+
+
+    ax.loglog(n, T, color='blue')
     Ts = jnp.linspace(0.1*jnp.min(T), 10*jnp.max(T))
     for adiabat in 1.5**jnp.arange(-8, 8):
-        ax.loglog((Ts/T[0])**(1.5) * n[0], Ts * adiabat, color='gray', linewidth=0.5)
+        ax.loglog((Ts/T[0])**(1.5) * n[0], Ts * adiabat, color='gray', linewidth=1.0)
 
     ax.set_xlim(0.7*jnp.min(n), 1.5*jnp.max(n))
     ax.set_ylim(0.7*jnp.min(T), 1.5*jnp.max(T))

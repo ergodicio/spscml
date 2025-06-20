@@ -1,11 +1,13 @@
 import jax.numpy as jnp
 import jax
 import jpu
+import optimistix as optx
+import mlflow
 
 from ..grids import PhaseSpaceGrid
 
 class Solver():
-    def __init__(self, R, L, C, Lp, V0, Lz, N):
+    def __init__(self, R, L, C, Lp, V0, Lz, N, mlflow_run_id):
         '''
         params:
             R: The circuit resistance [ohms]
@@ -24,6 +26,8 @@ class Solver():
         self.Lz = Lz
         self.N = N
         self.ureg = jpu.UnitRegistry()
+        self.rootfinder = optx.Newton(rtol=1e-8, atol=1e-8)
+        self.mlflow_run_id = mlflow_run_id
 
 
     def solve(self, dt, Nt, ics, sheath_solve):
@@ -48,14 +52,15 @@ class Solver():
         @jax.jit
         def scanner(carry, ys):
             y, Vp, t = carry
+            jax.debug.print("t = {}", t)
             jax.debug.print("y: {}", y)
             assert len(y) == 4
+            jax.debug.callback(self.log_progress, t, y, Vp)
             Q, I, T, n = y
             Q_I = jnp.array([Q, I])
             Q_I_new, Vnew = self.implicit_euler_step(Q_I, Vp, T, n, dt, sheath_solve)
             I_new = Q_I_new[1]
             T_prime = self.step_heating_and_cooling(I_new, T, n, dt)
-            #T_prime = T
 
             T_new = (I_new / I)**2 * T
             n_new = (T_new / T_prime)**(3/2) * n
@@ -95,43 +100,32 @@ class Solver():
                 ])
             return r
 
-        def residual(y):
+        def residual(y, args):
             Qnext, Vpnext = y
             Ip = sheath_solve(Vpnext, T, n)
             return residual_helper(y, Ip)
 
 
-        def jac_residual(y):
-            Q, Vp = y
-            dQ = Q * 1e-6
-            dV = Vp * 1e-6
-            e1 = jnp.array([dQ, 0.])
-            e2 = jnp.array([0., dV])
-            jr1 = (residual(y + e1) - residual(y - e1)) / (2*dQ)
-            jr2 = (residual(y + e2) - residual(y - e2)) / (2*dV)
-            J = jnp.stack([jr1, jr2], axis=1)
-            return J
-
-        
         guess = jnp.array([Qn, Vp])
 
-        # Newton iteration
-        for i in range(3):
-            jax.debug.print("guess = {}", guess)
-            r_val = residual(guess)
-            jax.debug.print("residual = {}", r_val)
-            J = jac_residual(guess)
-            step = -jnp.linalg.solve(J, r_val)
-            guess = guess + step
-
-        Q, V = guess
+        Q, V = optx.root_find(residual, self.rootfinder, guess, max_steps=5, throw=False).value
         Ip = sheath_solve(V, T, n)
         return jnp.array([Q, Ip]), V
 
 
     def estimate_plasma_current(self, Vp):
         return {"Ip": -jnp.tanh(Vp / 2.5e4) * 1e6}
-        #return {"Ip": -Vp / 0.001}
+
+
+    def log_progress(self, t, y, Vp):
+        step_ns = int(t * 1e9)
+        Q, I, T, n = y
+        mlflow.log_metric("Time - seconds", t, step=step_ns, run_id=self.mlflow_run_id)
+        mlflow.log_metric("Capacitor charge - coulombs", Q, step=step_ns, run_id=self.mlflow_run_id)
+        mlflow.log_metric("Current - amperes", I, step=step_ns, run_id=self.mlflow_run_id)
+        mlflow.log_metric("Temperature - eV", T, step=step_ns, run_id=self.mlflow_run_id)
+        mlflow.log_metric("Density - per cubic meter", n, step=step_ns, run_id=self.mlflow_run_id)
+        mlflow.log_metric("Voltage - volts", Vp, step=step_ns, run_id=self.mlflow_run_id)
 
 
     def step_heating_and_cooling(self, I, T, n, dt):
