@@ -2,7 +2,6 @@ name: "tanh_sheath"
 version: "0.1.0"
 
 build_config:
-  base_image: "nvidia/cuda:12.9.1-devel-ubuntu24.04"
+  base_image: "python:3.11-bookworm"
   custom_build_steps:
-    - "RUN apt-get update && apt-get install -y python3-pip python3-setuptools python3-distutils"
     - "ENV GIT_PYTHON_REFRESH=quiet"
