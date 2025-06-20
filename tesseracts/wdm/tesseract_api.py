@@ -293,13 +293,13 @@ def adiabat_plot(out, N, L):
     ax.set_xlim(0.7*jnp.min(n), 1.5*jnp.max(n))
     ax.set_ylim(0.7*jnp.min(T), 1.5*jnp.max(T))
 
-    Ts = jnp.linspace(0.7*jnp.min(T), 1.5*jnp.max(T))
-    ns = jnp.linspace(0.7*jnp.min(n), 1.5*jnp.max(n))
+    Ts = jnp.geomspace(0.7*jnp.min(T), 1.5*jnp.max(T))
+    ns = jnp.geomspace(0.7*jnp.min(n), 1.5*jnp.max(n))
     n_mesh, T_mesh = jnp.meshgrid(ns, Ts)
     P_f = fusion_power_of(n_mesh, T_mesh)
 
     cf = ax.contourf(n_mesh, T_mesh, P_f, alpha=0.5,
-                     cmap=plt.cm.magma, norm=mpl.colors.LogNorm(vmin=P_f.min(), vmax=P_f.max()))
+                     cmap=plt.cm.magma, norm=mpl.colors.LogNorm(vmin=1e-6, vmax=1e18))
 
     ax.set_xlabel("n [m^-3]")
     ax.set_ylabel("T [eV]")
