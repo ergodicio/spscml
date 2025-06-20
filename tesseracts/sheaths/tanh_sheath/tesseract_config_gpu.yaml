@@ -1,0 +1,7 @@
+name: "tanh_sheath"
+version: "0.1.0"
+
+build_config:
+  base_image: "python:3.11-bookworm"
+  custom_build_steps:
+    - "ENV GIT_PYTHON_REFRESH=quiet"

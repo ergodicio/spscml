@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - main
+      - jack-deploys
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -36,6 +37,21 @@ jobs:
           ECR_REPOSITORY: hackathon
           IMAGE_TAG: tanh_sheath
         run: |
+          # Use GPU config and requirements
+          cp tesseracts/sheaths/tanh_sheath/tesseract_config_gpu.yaml tesseracts/sheaths/tanh_sheath/tesseract_config.yaml
+          cp tesseracts/sheaths/tanh_sheath/tesseract_requirements_gpu.txt tesseracts/sheaths/tanh_sheath/tesseract_requirements.txt
+          
+          # Write custom build steps to tesseract config
+          cat << 'EOF' >> tesseracts/sheaths/tanh_sheath/tesseract_config.yaml
+              - ENV AWS_ACCESS_KEY_ID=${{ secrets.HACKATHON_ACCESS_KEY }}
+              - ENV AWS_SECRET_ACCESS_KEY=${{ secrets.HACKATHON_SECRET_ACCESS_KEY }}
+          EOF
+
+          # Debug: show final config
+          echo "=== Final tesseract_config.yaml ==="
+          cat tesseracts/sheaths/tanh_sheath/tesseract_config.yaml
+          echo "==================================="
+
           pip install tesseract-core
           tesseract --loglevel debug build tesseracts/sheaths/tanh_sheath --tag $IMAGE_TAG
           docker tag tanh_sheath:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
