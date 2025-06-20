@@ -1,5 +1,5 @@
 ../../../../spscml
-jax==0.6.0
+jax[cpu]==0.6.0
 jpu
 equinox
 boto3

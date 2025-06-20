@@ -37,6 +37,9 @@ jobs:
           ECR_REPOSITORY: hackathon
           IMAGE_TAG: wdm
         run: |
+          # Modify requirements to use CUDA instead of CPU
+          sed -i 's/jax\[cpu\]/jax[cuda12]/g' tesseracts/wdm/tesseract_requirements.txt
+          
           # Write custom build steps to tesseract config
           cat << 'EOF' >> tesseracts/wdm/tesseract_config.yaml
             custom_build_steps:
