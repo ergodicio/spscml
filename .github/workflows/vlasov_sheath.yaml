@@ -42,12 +42,18 @@ jobs:
           cp tesseracts/sheaths/vlasov/tesseract_requirements_gpu.txt tesseracts/sheaths/vlasov/tesseract_requirements.txt
           
           # Write custom build steps to tesseract config
+          echo >> tesseracts/sheaths/vlasov/tesseract_config.yaml
           cat << 'EOF' >> tesseracts/sheaths/vlasov/tesseract_config.yaml
             custom_build_steps:
              - |
               ENV AWS_ACCESS_KEY_ID=${{ secrets.HACKATHON_ACCESS_KEY }}
               ENV AWS_SECRET_ACCESS_KEY=${{ secrets.HACKATHON_SECRET_ACCESS_KEY }}
           EOF
+          
+          # Debug: show final config
+          echo "=== Final tesseract_config.yaml ==="
+          cat tesseracts/sheaths/vlasov/tesseract_config.yaml
+          echo "==================================="
 
           pip install tesseract-core
           tesseract --loglevel debug build tesseracts/sheaths/vlasov --tag $IMAGE_TAG
