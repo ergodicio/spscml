@@ -43,8 +43,6 @@ jobs:
           
           # Write custom build steps to tesseract config
           cat << 'EOF' >> tesseracts/sheaths/vlasov/tesseract_config.yaml
-              - ENV AWS_ACCESS_KEY_ID=${{ secrets.HACKATHON_ACCESS_KEY }}
-              - ENV AWS_SECRET_ACCESS_KEY=${{ secrets.HACKATHON_SECRET_ACCESS_KEY }}
           EOF
           
           # Debug: show final config
