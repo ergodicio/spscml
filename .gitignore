@@ -13,6 +13,7 @@
 **/*.aux
 **/*.dvi
 
+*.ipynb
 .ipynb_checkpoints/
 
 # MLFlow database
