@@ -42,12 +42,9 @@ jobs:
           cp tesseracts/wdm/tesseract_requirements_gpu.txt tesseracts/wdm/tesseract_requirements.txt
           
           # Write custom build steps to tesseract config
-          echo >> tesseracts/wdm/tesseract_config.yaml
           cat << 'EOF' >> tesseracts/wdm/tesseract_config.yaml
-            custom_build_steps:
-             - |
-              ENV AWS_ACCESS_KEY_ID=${{ secrets.HACKATHON_ACCESS_KEY }}
-              ENV AWS_SECRET_ACCESS_KEY=${{ secrets.HACKATHON_SECRET_ACCESS_KEY }}
+              - ENV AWS_ACCESS_KEY_ID=${{ secrets.HACKATHON_ACCESS_KEY }}
+              - ENV AWS_SECRET_ACCESS_KEY=${{ secrets.HACKATHON_SECRET_ACCESS_KEY }}
           EOF
           
           # Debug: show final config
