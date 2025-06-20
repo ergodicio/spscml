@@ -260,9 +260,26 @@ between times $t^{n+1}$ and $t^n$.
 However, the adiabatic expansion or compression is between states with temperatures $T'$ and $T^{n+1}$,
 so that the ratio of volumetric densities is determined by $T'$.
 
-\section{Vlasov discretizations}
+\section{Kinetic modeling of the plasma sheath}
 
-The governing kinetic equation for our study is the 1D1V Vlasov-BGK equation in
+For simulating the sheath dynamics, we need to carefully design the model problem in such a way
+that it preserves the steady-state behavior that we want, as well as the bulk resistivity.
+Both the sheath structure and the plasma resistivity are key to obtaining the correct plasma current density.
+We use a setup similar to that described in \cite{skolarContinuumKineticInvestigation2023}. The key features are:
+\begin{itemize}
+    \item A domain with a length of around 256 (in units of the Debye length), bounded on both ends by an absorbing wall boundary.
+        Inside the domain we solve the Vlasov-Poisson system, plus collisions to effect resistivity.
+    \item The desired bias voltage $V_p$ is applied as a boundary condition on the Poisson equation.
+    \item A "flux source term", whose role is to replace the particles lost to the walls, is applied to keep the total particle
+        number nearly constant. This lets us achieve a steady state solution.
+    \item A collision operator is localized to the center of the domain. Notionally, we let the interior two-thirds of the domain
+        correspond to the nearly $\num{5e5}$ Debye lengths between electrodes in a physical Z Pinch.
+        To obtain the correct resistivity, we enhance the collisionality (and thereby reduce the particle mean free path) by a
+        ratio corresponding to the ratio between the simulation domain length and the interelectrode gap.
+\end{itemize}
+
+
+The governing kinetic equation for our study is the 1D1V Vlasov-Poisson-BGK equation in
 the ``flexible plasma normalization'' \cite{millerMultispecies13momentModel2016}:
 \begin{align}
     \label{eqn:vlasov_bgk}
@@ -275,7 +292,7 @@ distribution with temperature $T_{0}$ and velocity $u = 0$:
 \end{align*}
 where
 \begin{align*}
-    M_s(v) = \frac{1}{(2\pi T_0/A_s)^{1/2}} \exp \left( -\frac{A_s|v|^2}{2T_0} \right).
+    M_s(v) = \frac{n_s(x)}{(2\pi T_0/A_s)^{1/2}} \exp \left( -\frac{A_s|v|^2}{2T_0} \right).
 \end{align*}
 The collision frequency $\nu_s(x)$ is spatially dependent, since we apply an increased collision frequency in the center of the domain
 in order to simulate equilibration with the bulk plasma.
@@ -329,18 +346,14 @@ where $\mathbf{1}$ is the indicator function.
 
 \subsection{Full-tensor discretization}
 
-We use the IMEX-SSP2(2, 2, 2) L-stable scheme:
+We use the SSPRK2 time stepping scheme:
 \begin{align*}
-    f^{(1)} &= f^n + \Delta t \gamma Q(f^{(1)}) \\
-    f^{(2)} &= f^n - \Delta t  \left( v \partial_x f^{(1)} + (\omega_c \tau) \frac{Z}{A} E^{(1)} \partial_v f^{(1)} \right) + \Delta t \left( (1 - 2\gamma) Q(f^{(1)}) + \gamma Q(f^{(2)}) \right)  \\
-    f^{n+1} &= f^n - \Delta t \left( \frac{1}{2} \left[ v \partial_x f^{(1)} + (\omega_c \tau) \frac{Z}{A} E^{(1)} \partial_v f^{(1)} \right]  + \frac{1}{2} \left[ v \partial_x f^{(2)} + (\omega_c \tau) \frac{Z}{A} E^{(2)} \partial_v f^{(2)} \right] \right)  \\
-            &\qquad \qquad + \Delta t \left( \frac{1}{2} Q(f^{(1)}) + \frac{1}{2} Q(f^{(2)}) \right) 
+    f^{(1)} &= f^n + \Delta t \mathcal{V}(f^n) \\
+    f^{n+1} &= \frac{f^n}{2} + \frac{f^{(1)}}{2} + \Delta t \mathcal{V}(f^{(1)}),
 \end{align*}
-
-First-order derivatives are discretized using a slope-limited MUSCL scheme with direct upwinding based on the
+where $\mathcal{V}$ represents the right-hand side of the Vlasov-Poisson-BGK equation.
+First-order derivatives are discretized using a slope-limited finite volume scheme with direct upwinding based on the
 sign of the flux ($v$ or $E$).
-The collisional term is implemented using a centered finite difference scheme based on the Maxwellian
-form of the collision operator, Equation \eqref{eqn:maxwellian_collisional}.
 
 \subsection{Straightforward DLR scheme}
 
@@ -353,7 +366,8 @@ We give each species a low-rank ansatz:
 The time integration is accomplished with the projector-splitting integrator using a first-order
 Lie-Trotter splitting.
 Boundary conditions in $x$ must be applied to the $K$ basis functions, rather than $X$; this slightly modifies
-the form of the $\partial_x X$ terms in the S and L substeps.
+the form of the $\partial_x X$ terms in the S and L substeps. For a comprehensive description of the treatement
+of boundary conditions in the low-rank framework, see \cite{huAdaptiveDynamicalLow2022}.
 
 \subsubsection{Low-rank substeps}
 
