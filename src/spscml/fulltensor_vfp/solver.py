@@ -31,7 +31,7 @@ class Solver(eqx.Module):
                  plasma: TwoSpeciesPlasma, 
                  grids,
                  flux_source_enabled,
-                 nu_ee, nu_ii, adjoint_method):
+                 nu_ee, nu_ii, adjoint_method=None):
         self.plasma = plasma
         self.grids = grids
         self.flux_source_enabled = flux_source_enabled
