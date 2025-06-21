@@ -12,7 +12,7 @@ from ..poisson import poisson_solve
 
 SPECIES = ['electron', 'ion']
 
-SCHEME = 'minmod'
+SCHEME = 'upwind'
 
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
