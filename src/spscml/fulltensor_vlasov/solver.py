@@ -14,7 +14,6 @@ from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
 from ..utils import zeroth_moment, first_moment, second_moment
-from .dougherty import lbo_operator_ij, species_info, lbo_operator_ij_L_diagonals
 
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
