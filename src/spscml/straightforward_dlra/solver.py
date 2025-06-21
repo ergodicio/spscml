@@ -21,6 +21,9 @@ class Solver(eqx.Module):
     nu_ee: float
     nu_ii: float
     boundary_type: str
+    As: dict
+    Zs: dict
+    nus: dict
 
 
     def __init__(self,
@@ -35,6 +38,9 @@ class Solver(eqx.Module):
         self.nu_ee = nu_ee
         self.nu_ii = nu_ii
         self.boundary_type = boundary_type
+        self.As = {'electron': self.plasma.Ae, 'ion': self.plasma.Ai}
+        self.Zs = {'electron': self.plasma.Ze, 'ion': self.plasma.Zi}
+        self.nus = {'electron': self.nu_ee, 'ion': self.nu_ii}
 
 
     def solve(self, dt, Nt, initial_conditions, boundary_conditions, dtmax):
@@ -67,14 +73,10 @@ class Solver(eqx.Module):
 
 
     def step_K(self, t, ys, args):
-        As = {'electron': self.plasma.Ae, 'ion': self.plasma.Ai}
-        Zs = {'electron': self.plasma.Ze, 'ion': self.plasma.Zi}
-        nus = {'electron': self.nu_ee, 'ion': self.nu_ii}
-
         K_of = lambda X, S, V: (X.T @ S).T
 
-        flux_out = 1*self.ion_flux_out(ys)
-        args_of = lambda sp: {**args, 'V': ys[sp][2], 'Z': Zs[sp], 'A': As[sp], 'nu': nus[sp],
+        flux_out = self.ion_flux_out(ys)
+        args_of = lambda sp: {**args, 'V': ys[sp][2], 'Z': self.Zs[sp], 'A': self.As[sp], 'nu': self.nus[sp],
                               'flux_out': flux_out}
 
         def step_Ks_with_E_RHS(Ks):
@@ -84,9 +86,7 @@ class Solver(eqx.Module):
                     for sp in SPECIES }
 
 
-        Ks = rk1({ sp: K_of(*ys[sp]) for sp in SPECIES },
-                    step_Ks_with_E_RHS,
-                    args['dt'])
+        Ks = rk1({ sp: K_of(*ys[sp]) for sp in SPECIES }, step_Ks_with_E_RHS, args['dt'])
 
         def XSV_of(K, y, grid):
             _, _, V = y
@@ -132,14 +132,11 @@ class Solver(eqx.Module):
 
 
     def step_S(self, t, ys, args):
-        As = {'electron': self.plasma.Ae, 'ion': self.plasma.Ai}
-        Zs = {'electron': self.plasma.Ze, 'ion': self.plasma.Zi}
-        nus = {'electron': self.nu_ee, 'ion': self.nu_ii}
-        
         flux_out = self.ion_flux_out(ys)
         S_of = lambda X, S, V: S
         args_of = lambda sp: {**args, 'X': ys[sp][0], 'V': ys[sp][2],
-                              'Z': Zs[sp], 'A': As[sp], 'nu': nus[sp], 'flux_out': flux_out}
+                              'Z': self.Zs[sp], 'A': self.As[sp], 'nu': self.nus[sp], 
+                              'flux_out': flux_out}
 
         def step_Ss_with_E_RHS(Ss):
             E = self.solve_poisson_XSV(Ss, ys, self.grids, args['bcs'])
@@ -148,9 +145,7 @@ class Solver(eqx.Module):
                     for sp in SPECIES }
 
 
-        Ss = rk1({ sp: S_of(*ys[sp]) for sp in SPECIES }, 
-                    step_Ss_with_E_RHS,
-                    args['dt'])
+        Ss = rk1({ sp: S_of(*ys[sp]) for sp in SPECIES }, step_Ss_with_E_RHS, args['dt'])
 
         def XSV_of(S, y):
             X, _, V = y
@@ -196,14 +191,10 @@ class Solver(eqx.Module):
 
 
     def step_L(self, t, ys, args):
-        As = {'electron': self.plasma.Ae, 'ion': self.plasma.Ai}
-        Zs = {'electron': self.plasma.Ze, 'ion': self.plasma.Zi}
-        nus = {'electron': self.nu_ee, 'ion': self.nu_ii}
-
         L_of = lambda X, S, V: S @ V
         flux_out = self.ion_flux_out(ys)
-        args_of = lambda sp: {**args, 'X': ys[sp][0], 'Z': Zs[sp], 'A': As[sp], 'nu': nus[sp],
-                              'flux_out': flux_out}
+        args_of = lambda sp: {**args, 'X': ys[sp][0], 'Z': self.Zs[sp], 'A': self.As[sp], 
+                              'nu': self.nus[sp], 'flux_out': flux_out}
 
         def step_Ls_with_E_RHS(Ls):
             E = self.solve_poisson_XL(Ls, ys, self.grids, args['bcs'])
@@ -211,9 +202,7 @@ class Solver(eqx.Module):
                                                                  {**args_of(sp), 'E': E})
                     for sp in SPECIES }
         
-        Ls = rk1({ sp: L_of(*ys[sp]) for sp in SPECIES },
-                    step_Ls_with_E_RHS,
-                    args['dt'])
+        Ls = rk1({ sp: L_of(*ys[sp]) for sp in SPECIES }, step_Ls_with_E_RHS, args['dt'])
 
         def XSV_of(L, y, grid):
             X, _, _ = y
