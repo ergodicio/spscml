@@ -150,9 +150,9 @@ class Solver(eqx.Module):
                               'flux_out': flux_out}
 
         def step_Ks_with_E_RHS(Ks):
-            E = solve_poisson_KV(Ks, ys, self.grids, args['bcs'], self.plasma)
+            # HACKATHON: E = ...
             return { sp: self.K_step_single_species_RHS(Ks[sp], self.grids[sp], 
-                                                                 {**args_of(sp), 'E': E})
+                                                                 {**args_of(sp)})
                     for sp in SPECIES }
 
 
@@ -178,7 +178,7 @@ class Solver(eqx.Module):
         Returns:
             Time derivative of K matrix
         """
-        V, E = args['V'], args['E']
+        V = args['V']
         v = grid.vs
         r = self.r
         assert V.shape == (r, grid.Nv)
@@ -186,19 +186,17 @@ class Solver(eqx.Module):
         v_plus_matrix = V @ jnp.diag(jnp.where(v > 0, v, 0.0)) @ V.T * grid.dv
         v_minus_matrix = V @ jnp.diag(jnp.where(v < 0, v, 0.0)) @ V.T * grid.dv
 
-        V_left_matrix = V @ jnp.concatenate([jnp.zeros((r, 1)), jnp.diff(V, axis=1) / grid.dv], axis=1).T * grid.dv
-        V_right_matrix = V @ jnp.concatenate([jnp.diff(V, axis=1) / grid.dv, jnp.zeros((r, 1))], axis=1).T * grid.dv
-
         K_bcs = self.apply_K_bcs(K, V, grid, n_ghost_cells=2)
         v_flux_func = lambda left, right: v_plus_matrix @ left + v_minus_matrix @ right
         v_flux = slope_limited_flux(K_bcs, SCHEME, v_flux_func, grid.dx, axis=1)
 
         v_flux_diff = jnp.diff(v_flux, axis=1) / grid.dx
 
-        fac = self.plasma.omega_c_tau * args['Z'] / args['A']
-        E_plus = jnp.atleast_2d(jnp.where(fac*E > 0, fac*E, 0.0))
-        E_minus = jnp.atleast_2d(jnp.where(fac*E < 0, fac*E, 0.0))
-        E_flux = (V_left_matrix @ (K * E_plus) + V_right_matrix @ (K * E_minus))
+        # HACKATHON: add E*df/dv term here
+        # You'll need to implement:
+        # 1. Compute upwinded E arrays based on sign of Z/A * E
+        # 2. Compute upwind dV/dv matrices <V, D^\pm V>
+        # 3. Compute the projected E*df/dv flux term
 
         # HACKATHON: add collision terms and flux source terms here
         # You'll need to implement:
@@ -207,7 +205,7 @@ class Solver(eqx.Module):
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func, flux_source_shape_func, and maxwellian in collisions_and_sources.py
 
-        return -v_flux_diff - E_flux
+        return -v_flux_diff
 
 
     def step_S(self, t, ys, args):
@@ -229,9 +227,9 @@ class Solver(eqx.Module):
                               'flux_out': flux_out}
 
         def step_Ss_with_E_RHS(Ss):
-            E = solve_poisson_XSV(Ss, ys, self.grids, args['bcs'], self.plasma)
+            # HACKATHON: E = ...
             return { sp: self.S_step_single_species_RHS(Ss[sp], self.grids[sp], 
-                                                                 {**args_of(sp), 'E': E})
+                                                                 {**args_of(sp)})
                     for sp in SPECIES }
 
 
@@ -255,7 +253,7 @@ class Solver(eqx.Module):
         Returns:
             Time derivative of S matrix
         """
-        X, V, E = args['X'], args['V'], args['E']
+        X, V = args['X'], args['V']
         v = grid.vs
         r = self.r
 
@@ -270,13 +268,11 @@ class Solver(eqx.Module):
 
         v_term = K_left_matrix @ v_plus_matrix.T + K_right_matrix @ v_minus_matrix.T
 
-        V_left_matrix = V @ jnp.concatenate([jnp.zeros((r, 1)), jnp.diff(V, axis=1) / grid.dv], axis=1).T * grid.dv
-        V_right_matrix = V @ jnp.concatenate([jnp.diff(V, axis=1) / grid.dv, jnp.zeros((r, 1))], axis=1).T * grid.dv
-
-        fac = self.plasma.omega_c_tau * args['Z'] / args['A']
-        E_plus_matrix = X @ jnp.diag(jnp.where(fac*E > 0, fac*E, 0.0)) @ X.T * grid.dx
-        E_minus_matrix = X @ jnp.diag(jnp.where(fac*E < 0, fac*E, 0.0)) @ X.T * grid.dx
-        E_term = (E_plus_matrix @ S @ V_left_matrix.T + E_minus_matrix @ S @ V_right_matrix.T)
+        # HACKATHON: add E*df/dv term here
+        # You'll need to implement:
+        # 1. Compute upwinded <X, E^\pm X> matrices based on sign of Z/A * E
+        # 2. Compute upwind dV/dv matrices <V, E^\pm V>
+        # 3. Compute the projected E*df/dv flux term
 
         # HACKATHON: add collision terms and flux source terms here
         # You'll need to implement:
@@ -285,7 +281,7 @@ class Solver(eqx.Module):
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
 
-        return v_term + E_term
+        return v_term
 
 
     def step_L(self, t, ys, args):
@@ -306,9 +302,9 @@ class Solver(eqx.Module):
                               'nu': self.nus[sp], 'flux_out': flux_out}
 
         def step_Ls_with_E_RHS(Ls):
-            E = solve_poisson_XL(Ls, ys, self.grids, args['bcs'], self.plasma)
+            # HACKATHON: E = ...
             return { sp: self.L_step_single_species_RHS(Ls[sp], self.grids[sp], 
-                                                                 {**args_of(sp), 'E': E})
+                                                                 {**args_of(sp)})
                     for sp in SPECIES }
         
         Ls = rk1({ sp: L_of(*ys[sp]) for sp in SPECIES }, step_Ls_with_E_RHS, args['dt'])
@@ -333,7 +329,7 @@ class Solver(eqx.Module):
         Returns:
             Time derivative of L matrix
         """
-        X, E = args['X'], args['E']
+        X = args['X']
         v = grid.vs
         r = self.r
 
@@ -351,12 +347,11 @@ class Solver(eqx.Module):
         v_minus = jnp.where(v < 0, v, 0.0)
         v_flux = jnp.atleast_2d(v_plus) * (K_left_matrix @ V) + jnp.atleast_2d(v_minus) * (K_right_matrix @ V)
         
-        fac = self.plasma.omega_c_tau * args['Z'] / args['A']
-        E_plus_matrix = X @ jnp.diag(jnp.where(fac*E > 0, fac*E, 0.0)) @ X.T * grid.dx
-        E_minus_matrix = X @ jnp.diag(jnp.where(fac*E < 0, fac*E, 0.0)) @ X.T * grid.dx
-        L_bcs = jnp.pad(L, [(0, 0), (2, 2)], mode='empty')
-        E_flux_func = lambda left, right: E_plus_matrix @ left + E_minus_matrix @ right
-        E_flux = slope_limited_flux_divergence(L_bcs, SCHEME, E_flux_func, grid.dv, axis=1)
+        # HACKATHON: add E*df/dv term here
+        # You'll need to implement:
+        # 1. Compute upwinded <X, E^\pm X> matrices based on sign of Z/A * E
+        # 2. Apply zero Dirichlet boundaries to L
+        # 3. Compute the flux divergence using the slope_limited_flux_divergence function
 
         # HACKATHON: add collision terms and flux source terms here
         # You'll need to implement:
@@ -365,11 +360,7 @@ class Solver(eqx.Module):
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
 
-        return -v_flux - E_flux
-
-
-
-    
+        return -v_flux
 
 
     def ion_flux_out(self, ys):
@@ -408,19 +399,13 @@ class Solver(eqx.Module):
         V_rightgoing_matrix = V @ jnp.diag(jnp.where(v > 0, 1.0, 0.0)) @ V.T * grid.dv
 
         if self.boundary_type == 'AbsorbingWall':
+            # HACKATHON: implement absorbing wall boundary conditions
+            # for either 1 or 2 ghost cells
+            raise NotImplementedError("HACKATHON: Implement absorbing wall BCs for DLR solver")
             if n_ghost_cells == 1:
-                return jnp.concatenate([
-                    jnp.atleast_2d(V_leftgoing_matrix @ K[:, 0]).T,
-                    K,
-                    jnp.atleast_2d(V_rightgoing_matrix @ K[:, -1]).T,
-                ], axis=1)
+                pass
             elif n_ghost_cells == 2:
-                K_out_left = K[:, [0, 1]] - 2*(K[:, [1]] - K[:, [0]])
-                return jnp.concatenate([
-                    V_leftgoing_matrix @ K_out_left,
-                    K, 
-                    V_rightgoing_matrix @ K[:, [-1, -1]],
-                ], axis=1)
+                pass
         elif self.boundary_type == 'Periodic':
             if n_ghost_cells == 1:
                 return jnp.concatenate([
@@ -441,7 +426,7 @@ class Stepper(Euler):
     """
     Custom stepper for the DLRA solver.
     
-    Inherits from Euler solver but uses custom time stepping logic.
+    Needed to integrate with the diffrax library for affordable reverse-mode differentiation
     """
 
     def step(self, terms, t0, t1, y0, args, solver_state, made_jump):
