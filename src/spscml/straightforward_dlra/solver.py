@@ -9,7 +9,8 @@ from ..plasma import TwoSpeciesPlasma
 from ..rk import rk1, ssprk2
 from ..muscl import slope_limited_flux, slope_limited_flux_divergence
 from ..poisson import poisson_solve
-from ..collisions_and_sources import collision_frequency_shape_func, flux_source_shape_func
+from ..collisions_and_sources import collision_frequency_shape_func, flux_source_shape_func, maxwellian
+from .poisson import solve_poisson_KV, solve_poisson_XSV, solve_poisson_XL
 
 SPECIES = ['electron', 'ion']
 
@@ -149,7 +150,7 @@ class Solver(eqx.Module):
                               'flux_out': flux_out}
 
         def step_Ks_with_E_RHS(Ks):
-            E = self.solve_poisson_KV(Ks, ys, self.grids, args['bcs'])
+            E = solve_poisson_KV(Ks, ys, self.grids, args['bcs'], self.plasma)
             return { sp: self.K_step_single_species_RHS(Ks[sp], self.grids[sp], 
                                                                  {**args_of(sp), 'E': E})
                     for sp in SPECIES }
@@ -201,10 +202,10 @@ class Solver(eqx.Module):
 
         # HACKATHON: add collision terms and flux source terms here
         # You'll need to implement:
-        # 1. Compute density: n = (K.T @ (V @ jnp.ones(grid.Nv)) * grid.dv).T
+        # 1. Compute density n
         # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
         # 3. Flux source terms for particle injection
-        # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
+        # See collision_frequency_shape_func, flux_source_shape_func, and maxwellian in collisions_and_sources.py
 
         return -v_flux_diff - E_flux
 
@@ -228,7 +229,7 @@ class Solver(eqx.Module):
                               'flux_out': flux_out}
 
         def step_Ss_with_E_RHS(Ss):
-            E = self.solve_poisson_XSV(Ss, ys, self.grids, args['bcs'])
+            E = solve_poisson_XSV(Ss, ys, self.grids, args['bcs'], self.plasma)
             return { sp: self.S_step_single_species_RHS(Ss[sp], self.grids[sp], 
                                                                  {**args_of(sp), 'E': E})
                     for sp in SPECIES }
@@ -279,7 +280,7 @@ class Solver(eqx.Module):
 
         # HACKATHON: add collision terms and flux source terms here
         # You'll need to implement:
-        # 1. Compute density: n = (X.T @ S @ (V @ jnp.ones(grid.Nv)) * grid.dv).T
+        # 1. Compute density n
         # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
@@ -305,7 +306,7 @@ class Solver(eqx.Module):
                               'nu': self.nus[sp], 'flux_out': flux_out}
 
         def step_Ls_with_E_RHS(Ls):
-            E = self.solve_poisson_XL(Ls, ys, self.grids, args['bcs'])
+            E = solve_poisson_XL(Ls, ys, self.grids, args['bcs'], self.plasma)
             return { sp: self.L_step_single_species_RHS(Ls[sp], self.grids[sp], 
                                                                  {**args_of(sp), 'E': E})
                     for sp in SPECIES }
@@ -359,7 +360,7 @@ class Solver(eqx.Module):
 
         # HACKATHON: add collision terms and flux source terms here
         # You'll need to implement:
-        # 1. Compute density: n = (X.T @ (L @ jnp.ones(grid.Nv)) * grid.dv).T
+        # 1. Compute density n
         # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
@@ -367,133 +368,6 @@ class Solver(eqx.Module):
         return -v_flux - E_flux
 
 
-    def solve_poisson_ys(self, ys, grids, bcs):
-        """
-        Solve Poisson equation given current state in XSV format.
-        
-        Args:
-            ys: Current state (XSV decomposition for each species)
-            grids: Dictionary of grids
-            bcs: Boundary conditions for Poisson equation
-            
-        Returns:
-            Electric field
-        """
-        rho_c = self.rho_c_species_XSV(*ys['electron'], 
-                                      self.plasma.Ze, grids['electron']) + \
-                self.rho_c_species_XSV(*ys['ion'],
-                                      self.plasma.Zi, grids['ion'])
-        return poisson_solve(grids['x'], self.plasma, rho_c, bcs)
-
-
-    def solve_poisson_KV(self, Ks, ys, grids, bcs):
-        """
-        Solve Poisson equation given K matrices and V from current state.
-        
-        Args:
-            Ks: Dictionary of K matrices for each species
-            ys: Current state (for accessing V components)
-            grids: Dictionary of grids
-            bcs: Boundary conditions for Poisson equation
-            
-        Returns:
-            Electric field
-        """
-        rho_c = self.rho_c_species_KV(Ks['electron'], ys['electron'][2], 
-                                      self.plasma.Ze, grids['electron']) + \
-                self.rho_c_species_KV(Ks['ion'], ys['ion'][2], self.plasma.Zi, grids['ion'])
-        return poisson_solve(grids['x'], self.plasma, rho_c, bcs)
-
-
-    def rho_c_species_KV(self, K, V, Z, grid):
-        """
-        Compute charge density for a species from K and V matrices.
-        
-        Args:
-            K: K matrix (X^T S)
-            V: V matrix
-            Z: Charge number
-            grid: Phase space grid
-            
-        Returns:
-            Charge density contribution from this species
-        """
-        V_mass_vector = V @ jnp.ones(grid.Nv) * grid.dv
-        return (K.T @ V_mass_vector) * Z
-
-
-    def solve_poisson_XSV(self, Ss, ys, grids, bcs):
-        """
-        Solve Poisson equation given S matrices and X, V from current state.
-        
-        Args:
-            Ss: Dictionary of S matrices for each species
-            ys: Current state (for accessing X and V components)
-            grids: Dictionary of grids
-            bcs: Boundary conditions for Poisson equation
-            
-        Returns:
-            Electric field
-        """
-        rho_c = self.rho_c_species_XSV(ys['electron'][0], Ss['electron'], ys['electron'][2],
-                                      self.plasma.Ze, grids['electron']) + \
-                self.rho_c_species_XSV(ys['ion'][0], Ss['ion'], ys['ion'][2], 
-                                      self.plasma.Zi, grids['ion'])
-        return poisson_solve(grids['x'], self.plasma, rho_c, bcs)
-
-
-    def rho_c_species_XSV(self, X, S, V, Z, grid):
-        """
-        Compute charge density for a species from X, S, V matrices.
-        
-        Args:
-            X: X matrix
-            S: S matrix
-            V: V matrix
-            Z: Charge number
-            grid: Phase space grid
-            
-        Returns:
-            Charge density contribution from this species
-        """
-        V_mass_vector = V @ jnp.ones(grid.Nv) * grid.dv
-        return (X.T @ S @ V_mass_vector) * Z
-
-
-    def solve_poisson_XL(self, Ls, ys, grids, bcs):
-        """
-        Solve Poisson equation given L matrices and X from current state.
-        
-        Args:
-            Ls: Dictionary of L matrices (S V) for each species
-            ys: Current state (for accessing X components)
-            grids: Dictionary of grids
-            bcs: Boundary conditions for Poisson equation
-            
-        Returns:
-            Electric field
-        """
-        rho_c = self.rho_c_species_XL(ys['electron'][0], Ls['electron'], 
-                                      self.plasma.Ze, grids['electron']) + \
-                self.rho_c_species_XL(ys['ion'][0], Ls['ion'], self.plasma.Zi, grids['ion'])
-        return poisson_solve(grids['x'], self.plasma, rho_c, bcs)
-
-
-    def rho_c_species_XL(self, X, L, Z, grid):
-        """
-        Compute charge density for a species from X and L matrices.
-        
-        Args:
-            X: X matrix
-            L: L matrix (S V)
-            Z: Charge number
-            grid: Phase space grid
-            
-        Returns:
-            Charge density contribution from this species
-        """
-        L_mass_vector = L @ jnp.ones(grid.Nv) * grid.dv
-        return X.T @ L_mass_vector * Z
 
     
 
@@ -561,46 +435,6 @@ class Solver(eqx.Module):
                     K[:, [0, 1]],
                 ], axis=1)
 
-
-    def maxwellian(self, grid, args, n):
-        """
-        Compute Maxwellian distribution for collision operator.
-        
-        Args:
-            grid: Phase space grid
-            args: Arguments containing mass ratio A
-            n: Density (can be scalar or array)
-            
-        Returns:
-            Maxwellian distribution in velocity space
-        """
-        v = grid.vs
-        T = 1.0
-        theta = T / args['A']
-        M = n / (jnp.sqrt(2*jnp.pi*theta)) * jnp.exp(-v**2 / (2*theta))
-        return M
-
-
-    def collision_frequency(self, args):
-        """
-        Compute spatially varying collision frequency.
-        
-        Args:
-            args: Arguments containing collision frequency nu
-            
-        Returns:
-            Collision frequency as function of space
-        """
-        L = self.grids['x'].Lx
-
-        midpt = L/4
-        # Want 10 e-foldings between the midpoint (2/3rds of the way to the sheath)
-        # and the wall
-        efolding_dist = (midpt/2)/20
-        x = self.grids['x'].xs
-        h0 = lambda x: 1 + jnp.exp((x/efolding_dist) - midpt/efolding_dist)
-        h = 1 / (0.5 * (h0(x) + h0(-x)))
-        return jnp.expand_dims(h, axis=1) * args['nu']
 
 
 class Stepper(Euler):
