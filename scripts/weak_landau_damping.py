@@ -59,9 +59,6 @@ solve = jax.jit(lambda: solver.solve(0.004, 4000, initial_conditions, boundary_c
 solution = solve()
 
 frame = lambda i: jax.tree.map(lambda ys: ys[i, ...], solution.ys)
-Es = [solve_poisson_ys(frame(i), grids, boundary_conditions, plasma) for i in range(100)]
-
-E2s = jnp.array([jnp.sum(E**2/2) * x_grid.dx for E in Es])
 
 
 Xt, S, V = solution.ys['electron']
@@ -71,6 +68,11 @@ fe = Xt[-1, ...].T @ S[-1, ...] @ V[-1, ...]
 fig, axes = plt.subplots(2, 1, figsize=(10, 8))
 axes[0].imshow((fe - fe0).T, origin='lower')
 axes[0].set_aspect('auto')
-axes[1].plot(solution.ts, jnp.log10(E2s))
+
+# HACKATHON: check your DLR implementation by plotting the electrostatic
+# energy over time
+#Es = [solve_poisson_ys(frame(i), grids, boundary_conditions, plasma) for i in range(100)]
+#E2s = jnp.array([jnp.sum(E**2/2) * x_grid.dx for E in Es])
+#axes[1].plot(solution.ts, jnp.log10(E2s))
 
 plt.show()
