@@ -9,26 +9,59 @@
 
 This repository uses `uv` to manage python dependencies. Install it from here: https://github.com/astral-sh/uv
 
+Run `uv sync` to synchronize dependencies.
 
-## TODO list
+We'll run commands in this repository with `uv run`. This command wrapper avoids the need for managing virtualenvs.
+Use it like this:
+```
+uv run python
+```
 
-@ Howard--let's do all the work in this repository, including writing up the math.
+## Hackathon task list
 
-- [ ] Intro presentation
-- [ ] Write up of equation sets for reference
-- [ ] (in-progress) implement fulltensor 1D1V code
-- [ ] Implement straightforward 1D1V version of DLR
-- [ ] weak Landau damping test case for validation
-- [ ] Langmuir sheath demo run scripts for each code
-- [ ] Add Fokker-Planck collisions to fulltensor and DLR codes
-- [ ] Differentiable fluid code harness
-- [ ] Integrate sim runner code with MLFlow for experiment tracking and data collection
-- [ ] Test out neural network flux BC training with different objective functions
+- [ ] Implement one of both of the Vlasov solvers for the sheath problem
+    - [ ] Full-tensor Vlasov
+    - [ ] Projector-splitting DLR
+        - [ ] Works for the weak Landau damping test case
+- [ ] Check that your solver gives correct gradients for the (voltage -> current density) 
+      mapping by comparing to finite difference estimates
+- [ ] Build the `tanh_sheath` tesseract:
+    ```
+    uv run tesseract build tesseracts/sheaths/tanh_sheath
+    ```
+    and test it out
+    ```
+    uv run tesseract run tanh_sheath apply @tesseracts/sheaths/example_inputs/apply.json
+    ```
+- [ ] Build the Tesseract that wraps your Vlasov solver
+    ```
+    uv run tesseract build tesseracts/sheaths/...
+    ```
+    and test it out:
+    ```
+    uv run tesseract run vlasov_sheath apply @tesseracts/sheaths/example_inputs/apply.json
+    ```
+- [ ] Implement the whole-device model ODE solver's implicit Euler step function
+- [ ] Test out the whole-device model forward pass:
+    ```
+    uv run scripts/run_wdm.py
+    uv run scripts/run_wdm.py --image vlasov_sheath
+    ```
+- [ ] Deploy your Vlasov and WDM tesseracts to the cloud by pushing to a github branch
 
+### Vlasov sheath solvers
 
-## Tentative summer school project list
+The repository contains partial code for two Vlasov solvers that can be applied to the plasma sheath problem:
+- `fulltensor_vlasov/solver.py`: A full-f Vlasov solver based on a slope-limited finite volume scheme. You'll have to add
+    - The E*df/dv term and a Poisson solve call for the electric field
+    - The BGK collision term
+- `straightforward_dlra/solver.py`: A projector-splitting dynamical low-rank solver. You'll have to add
+    - The E*df/dv term and Poisson solve calls for the electric field at each substep
+    - The BGK collision term and flux source term
+    - The absorbing wall boundary condition handling.
+Both files contain `# HACKATHON` comments indicating work to be done to complete the solver.
 
-- [ ] Implement differentiable DLR version of vlasov sheath model
-- [ ] Get to end-to-end run through WDM
-- [ ] Perform training of sheath model surrogate
-- [ ] Perform end-to-end optimization via surrogate
+The scripts `sheath_fulltensor_vlasov.py` and `sheath_dlr_vlasov.py` contain harness code to set up and solve
+the sheath problem using the respective solver. For the DLR code, it's suggested to make sure you're on the 
+right track by checking against the `weak_landau_damping.py` script.
+
