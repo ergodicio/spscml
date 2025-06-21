@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from tesseract_core.runtime import Array, Differentiable, Float64
 from tesseract_core.runtime.tree_transforms import filter_func, flatten_with_paths
 
-from spscml.rlc_circuit.wrapper import solve_wdm
+from spscml.whole_device_model.wrapper import solve_wdm
 from spscml.fusion import fusion_power
 
 jax.config.update("jax_enable_x64", True)

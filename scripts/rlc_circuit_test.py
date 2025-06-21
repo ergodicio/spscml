@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from tesseract_core import Tesseract
 from tesseract_jax import apply_tesseract
 
-from spscml.rlc_circuit.solver import Solver
+from spscml.whole_device_model.solver import Solver
 from spscml.plasma import TwoSpeciesPlasma
 
 jax.config.update("jax_enable_x64", True)
