@@ -25,7 +25,7 @@ class Solver(eqx.Module):
     adjoint_method: str
 
     """
-    Solves the Vlasov-Fokker-Planck equation
+    Solves the Vlasov-BGK equation
     """
     def __init__(self,
                  plasma: TwoSpeciesPlasma, 
@@ -43,8 +43,8 @@ class Solver(eqx.Module):
 
 
     def step(self, t, fs, args):
-        nonstiff_rhs = lambda f: self.vlasov_rhs(f, args["bcs"], args["f0"])
-        return ssprk2(fs, nonstiff_rhs, args["dt"])
+        rhs = lambda f: self.vlasov_rhs(f, args["bcs"], args["f0"])
+        return ssprk2(fs, rhs, args["dt"])
 
 
     def solve(self, dt, Nt, initial_conditions, boundary_conditions, dtmax):
@@ -53,6 +53,9 @@ class Solver(eqx.Module):
             'ion': initial_conditions['ion'](*self.grids['ion'].xv),
         }
 
+        # Select the automatic differentiation method used by diffrax.
+        # This is necessary because a forward-mode Jacobian-Vector-Product ('jvp') is incompatible
+        # with the RecursiveCheckpointAdjoint method we use for reverse-mode differentiation.
         if self.adjoint_method == 'jvp':
             adjoint = diffrax.ForwardMode()
         else:
@@ -72,27 +75,13 @@ class Solver(eqx.Module):
         )
         return jax.tree.map(lambda fs: fs[0, ...], solution.ys)
 
-    def n(self, f, grid):
-        return jnp.sum(f, axis=1) * grid.dv
-
-
-    def rho_c(self, fs):
-        fe = fs['electron']
-        fi = fs['ion']
-        rho_c = self.plasma.Ze * self.n(fe, self.grids['electron']) + \
-                self.plasma.Zi * self.n(fi, self.grids['ion'])
-        return rho_c
-
-
-    def poisson_solve_from_fs(self, fs, boundary_conditions):
-        E = poisson_solve(self.grids['x'], self.plasma, self.rho_c(fs), boundary_conditions)
-        return E
-
 
     def vlasov_rhs(self, fs, boundary_conditions, f0):
         fe = fs['electron']
         fi = fs['ion']
-        E = self.poisson_solve_from_fs(fs, boundary_conditions)
+        # HACKATHON: Solve poisson equation for E
+        # See poisson.py -- poisson_solve()
+        E = jnp.zeros(self.grids['x'].Nx)
         
         electron_rhs = self.vlasov_fp_single_species_rhs(fe, E, self.plasma.Ae, self.plasma.Ze, 
                                                          self.grids['electron'],
