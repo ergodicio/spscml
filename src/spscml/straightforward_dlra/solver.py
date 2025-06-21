@@ -199,16 +199,14 @@ class Solver(eqx.Module):
         E_minus = jnp.atleast_2d(jnp.where(fac*E < 0, fac*E, 0.0))
         E_flux = (V_left_matrix @ (K * E_plus) + V_right_matrix @ (K * E_minus))
 
-        gamma = args['flux_out'] * flux_source_shape_func(self.grids['x'])
+        # HACKATHON: add collision terms and flux source terms here
+        # You'll need to implement:
+        # 1. Compute density: n = (K.T @ (V @ jnp.ones(grid.Nv)) * grid.dv).T
+        # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
+        # 3. Flux source terms for particle injection
+        # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
 
-        n = (K.T @ (V @ jnp.ones(grid.Nv)) * grid.dv).T
-        nu = args['nu'] * collision_frequency_shape_func(self.grids)
-        M = self.maxwellian(grid, args)
-        VM = V @ M * grid.dv
-
-        collision_term = (n*nu+gamma)[None, :] * VM[:, None] - K * nu[None, :]
-
-        return -v_flux_diff - E_flux + collision_term
+        return -v_flux_diff - E_flux
 
 
     def step_S(self, t, ys, args):
@@ -279,17 +277,14 @@ class Solver(eqx.Module):
         E_minus_matrix = X @ jnp.diag(jnp.where(fac*E < 0, fac*E, 0.0)) @ X.T * grid.dx
         E_term = (E_plus_matrix @ S @ V_left_matrix.T + E_minus_matrix @ S @ V_right_matrix.T)
 
-        gamma = args['flux_out'] * flux_source_shape_func(self.grids['x'])
+        # HACKATHON: add collision terms and flux source terms here
+        # You'll need to implement:
+        # 1. Compute density: n = (X.T @ S @ (V @ jnp.ones(grid.Nv)) * grid.dv).T
+        # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
+        # 3. Flux source terms for particle injection
+        # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
 
-        n = (X.T @ S @ (V @ jnp.ones(grid.Nv)) * grid.dv).T
-        nu = args['nu'] * collision_frequency_shape_func(self.grids)
-        X_nu_gamma_vec = X @ (n*nu + gamma) * grid.dx
-        X_nu_matrix = X @ jnp.diag(nu) @ X.T * grid.dx
-        M = self.maxwellian(grid, args)
-        VM = V @ M * grid.dv
-        collision_term = X_nu_gamma_vec[:, None] * VM[None, :] - X_nu_matrix @ S
-
-        return v_term + E_term - collision_term
+        return v_term + E_term
 
 
     def step_L(self, t, ys, args):
@@ -362,17 +357,14 @@ class Solver(eqx.Module):
         E_flux_func = lambda left, right: E_plus_matrix @ left + E_minus_matrix @ right
         E_flux = slope_limited_flux_divergence(L_bcs, SCHEME, E_flux_func, grid.dv, axis=1)
 
-        gamma = args['flux_out'] * flux_source_shape_func(self.grids['x'])
+        # HACKATHON: add collision terms and flux source terms here
+        # You'll need to implement:
+        # 1. Compute density: n = (X.T @ (L @ jnp.ones(grid.Nv)) * grid.dv).T
+        # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
+        # 3. Flux source terms for particle injection
+        # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
 
-        n = (X.T @ (L @ jnp.ones(grid.Nv)) * grid.dv).T
-        nu = args['nu'] * collision_frequency_shape_func(self.grids)
-        X_nu_gamma_vec = X @ (gamma + n*nu) * grid.dx
-        X_nu_matrix = X @ jnp.diag(nu) @ X.T * grid.dx
-        M = self.maxwellian(grid, args)
-
-        collision_term = X_nu_gamma_vec[:, None] * M[None, :] - X_nu_matrix @ L
-
-        return -v_flux - E_flux + collision_term
+        return -v_flux - E_flux
 
 
     def solve_poisson_ys(self, ys, grids, bcs):
@@ -570,20 +562,20 @@ class Solver(eqx.Module):
                 ], axis=1)
 
 
-    def maxwellian(self, grid, args):
+    def maxwellian(self, grid, args, n):
         """
         Compute Maxwellian distribution for collision operator.
         
         Args:
             grid: Phase space grid
             args: Arguments containing mass ratio A
+            n: Density (can be scalar or array)
             
         Returns:
             Maxwellian distribution in velocity space
         """
         v = grid.vs
         T = 1.0
-        n = 1.0
         theta = T / args['A']
         M = n / (jnp.sqrt(2*jnp.pi*theta)) * jnp.exp(-v**2 / (2*theta))
         return M
