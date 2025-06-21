@@ -10,6 +10,33 @@ from .solver import Solver
 ureg = jpu.UnitRegistry()
 
 def solve_wdm(inputs: dict) -> dict:
+    '''
+    Solve the whole-device model given a dictionary of inputs
+
+    inputs:
+        - 'Lz': The interelectrode gap [meters]
+        - 'R': The circuit resistance [ohms]
+        - 'L': The circuit inductance [henries]
+        - 'C': The circuit capacitance [farads]
+        - 'Lp_prime': The plasma inductance per unit length [henries/meter]
+        - 'Vc0': The initial capacitor voltage
+        - 'Ip0': The initial plasma current [amperes]
+        - 'a0': The initial pinch radius [meters]
+        - 'N': The plasma linear density [meters^-1]
+        - 'dt': The timestep to take [seconds]
+        - 't_end': The final time to step to [seconds]
+        - 'sheath_tesseract_url': The url of a running tesseract which implements the sheath interface.
+          See sheath_interface.py
+
+    Returns: a dictionary containing the solution component timeseries
+        - Q: the capacitor charge [coulombs]
+        - Ip: the plasma current [amperes]
+        - T: the plasma temperature [eV]
+        - n: the plasma density [m^-3]
+        - Vp: the plasma gap voltage [volts]
+        - ts: the timesteps taken [seconds]
+    '''
+
     Lp_prime = inputs['Lp_prime']
     Lz = inputs['Lz']
     Lp = Lp_prime * Lz
@@ -26,11 +53,6 @@ def solve_wdm(inputs: dict) -> dict:
     n0 = inputs['N'] / (jnp.pi * inputs['a0']**2)
     Q0 = inputs['Vc0'] * inputs['C']
 
-    jax.debug.print("Ip0 = {}", Ip0)
-    jax.debug.print("T0 = {}", T0)
-    jax.debug.print("n0 = {}", n0)
-
-
     ics = jnp.array([Q0, Ip0, T0, n0])
 
     dt = inputs['dt']
@@ -41,7 +63,8 @@ def solve_wdm(inputs: dict) -> dict:
             tx_inputs = dict(Vp=jnp.array(Vp),
                              n=jnp.array(n),
                              T=jnp.array(T),
-                             Lz=Lz)
+                             Lz=Lz,
+                             mlflow_parent_run_id=inputs['mlflow_run_id'])
             j = apply_tesseract(tx, tx_inputs)['j']
             Ip = j * inputs['N'] / n
             return Ip

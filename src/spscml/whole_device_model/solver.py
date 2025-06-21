@@ -43,9 +43,10 @@ class Solver():
                 - Ip0 is the initial plasma current [amperes]
                 - T0 is the initial temperature [eV]
                 - n0 is the initial volumetric density [meters^-3]
-            sheath_solve: a Callable that accepts (V, N, T), where
+            sheath_solve: a Callable that accepts (V, T, n), where
                 - V is the plasma gap voltage [volts]
                 - T is the plasma temperature [eV]
+                - n is the plasma density [m^-3]
                 and returns the plasma current in amperes
         '''
 
@@ -62,7 +63,14 @@ class Solver():
             I_new = Q_I_new[1]
             T_prime = self.step_heating_and_cooling(I_new, T, n, dt)
 
+            # Adiabatic compression or expansion: T_new is determined only from the change in
+            # current, per the Bennett relation describing thermal equilibrium:
+            #
+            #               (1+Z)*N*T = mu_0 * I_p^2 / (8pi)
+            #
             T_new = (I_new / I)**2 * T
+            # During the compression or expansion to thermal equilibrium, n changes adiabatically.
+            # The adiabat it follows is now based at T_prime, not T^n.
             n_new = (T_new / T_prime)**(3/2) * n
 
             ynew = jnp.append(Q_I_new, jnp.array([T_new, n_new]))
@@ -72,52 +80,38 @@ class Solver():
         return jax.lax.scan(scanner, (ics, 300.0, 0), jnp.arange(Nt))
 
 
-    def estimate_max_dt(self):
-        """
-        Estimates the maximum dt we should take by computing the eigenvalues
-        of the linear approximation to the problem which assumes no plasma resistance.
-        """
-        def forward_euler_rhs(y):
-            Qn, Qdotn = y
-            return jnp.array([Qdotn,
-                              (1 / (self.L - self.Lp) * (-Qn/self.C - self.R*Qdotn))])
-
-        J = jax.jacobian(forward_euler_rhs)(jnp.array([1.0, 0.0]))
-        lambda_max = jnp.max(jnp.abs(jnp.linalg.eigvals(J)))
-        return 0.2 / lambda_max
-
-
     def implicit_euler_step(self, y, Vp, T, n, dt, sheath_solve):
-        Qn, Qdotn = y
+        '''
+        Perform a single implicit-Euler step of the RLC circuit equations
 
-        def residual_helper(y, Ip):
-            Qnext, Vpnext = y
-            factor = self.Lp / (self.L - self.Lp)
-            V_Rp = (1 - factor) * (Vpnext - factor * (-Qnext / self.C - self.R * Ip))
-            r = jnp.array([
-                Qnext - Qn - dt * Ip,
-                -Ip + Qdotn + dt/(self.L - self.Lp) * (-Qnext/self.C - self.R*Ip + V_Rp)
-                ])
-            return r
+        Args:
+            y: An array containing [Qn, Qdotn=Ip^n], the 2-vector of unknowns at time t^n
+            Vp: The plasma gap voltage in volts at time t^n. Useful as an initial guess for a Newton iteration
+            T: The plasma temperature in units of electron-volts
+            n: The plasma density in units of meter^-3
+            dt: The timestep in units of seconds
+            sheath_solve: A Callable that accepts (V, N, T), where
+                - V is the plasma gap voltage [volts]
+                - T is the plasma temperature [eV]
+                - n is the plasma density [m^-3]
+                and returns the plasma current in amperes
 
-        def residual(y, args):
-            Qnext, Vpnext = y
-            Ip = sheath_solve(Vpnext, T, n)
-            return residual_helper(y, Ip)
+        Returns: (y, V) where
+            y: A 2-vector of [Q, Qdot=Ip] at time t^n+1
+            V The plasma gap voltage at time t^n+1
+        '''
 
-
-        guess = jnp.array([Qn, Vp])
-
-        Q, V = optx.root_find(residual, self.rootfinder, guess, max_steps=5, throw=False).value
-        Ip = sheath_solve(V, T, n)
-        return jnp.array([Q, Ip]), V
-
-
-    def estimate_plasma_current(self, Vp):
-        return {"Ip": -jnp.tanh(Vp / 2.5e4) * 1e6}
+        # HACKATHON: implement this function!
+        # You'll need to implement:
+        # - A residual function that accepts a guess [Q, V]^n+1 and returns the error in the implicit step
+        # - A call to optx.root_find that performs the Newton solve with self.rootfinder
+        raise NotImplementedError("HACKATHON: implement Implicit Euler step")
 
 
     def log_progress(self, t, y, Vp):
+        '''
+        Log a timestep to the MLFlow server.
+        '''
         step_ns = int(t * 1e9)
         Q, I, T, n = y
         mlflow.log_metric("Time - seconds", t, step=step_ns, run_id=self.mlflow_run_id)
@@ -129,6 +123,14 @@ class Solver():
 
 
     def step_heating_and_cooling(self, I, T, n, dt):
+        '''
+        Perform one timestep of the resistive heating and radiative cooling terms.
+        These modify only temperature, so we return T_prime, the temperature after heating+cooling,
+        but before adiabatic compression or expansion back to thermal equilibrium.
+
+        Returns:
+            T_prime, the temperature in units of electron-volts
+        '''
         ureg = self.ureg
         Lz = self.Lz * ureg.m
         N = self.N * ureg.m**-1

@@ -1,6 +1,18 @@
 from pydantic import BaseModel, Field
 from tesseract_core.runtime import Array, Differentiable, Float64
 
+'''
+This pair of classes defines an interface for tesseracts that implement
+the plasma sheath model.
+
+To use these in your tesseract_api.py file, simply do
+
+class InputSchema(SheathInputSchema):
+    pass
+
+class OutputSchema(SheathOutputSchema):
+    pass
+'''
 
 class SheathInputSchema(BaseModel):
     Vp: Differentiable[Float64] = Field(
