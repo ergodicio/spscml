@@ -40,6 +40,7 @@ def create_or_update_tesseract_service(tesseract_name):
                 "awslogs-stream-prefix": "ecs",
             },
         },
+        "resourceRequirements": [{"type": "GPU", "value": "1"}],
         "entryPoint": ["tesseract-runtime"],
         "command": ["serve", "--host", "0.0.0.0"],
     }
