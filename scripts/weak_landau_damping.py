@@ -6,6 +6,7 @@ import jax
 import matplotlib.pyplot as plt
 
 from spscml.straightforward_dlra.solver import Solver
+from spscml.straightforward_dlra.poisson import solve_poisson_ys
 from spscml.plasma import TwoSpeciesPlasma
 from spscml.grids import Grid, PhaseSpaceGrid
 from spscml.utils import zeroth_moment, first_moment
@@ -58,7 +59,7 @@ solve = jax.jit(lambda: solver.solve(0.004, 4000, initial_conditions, boundary_c
 solution = solve()
 
 frame = lambda i: jax.tree.map(lambda ys: ys[i, ...], solution.ys)
-Es = [solver.solve_poisson(frame(i), grids, boundary_conditions) for i in range(100)]
+Es = [solve_poisson_ys(frame(i), grids, boundary_conditions, plasma) for i in range(100)]
 
 E2s = jnp.array([jnp.sum(E**2/2) * x_grid.dx for E in Es])
 

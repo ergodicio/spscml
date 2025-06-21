@@ -89,7 +89,7 @@ class Solver(eqx.Module):
             dtmax: Maximum time step (for adaptive stepping)
             
         Returns:
-            Final low-rank factors (X, S, V) for each species
+            Solution object containing all saved timesteps with low-rank factors (X, S, V) for each species
         """
         y0 = {
             'electron': initial_conditions['electron'](*self.grids['electron'].xv),
@@ -108,8 +108,8 @@ class Solver(eqx.Module):
             saveat=SaveAt(ts=jnp.linspace(0.0, Nt*dt, 100)),
         )
 
-        # Return the final timestep
-        return jax.tree.map(lambda ys: ys[-1, ...], solution.ys)
+        # Return the full solution with all timesteps
+        return solution
 
 
     def step(self, t, ys, args):

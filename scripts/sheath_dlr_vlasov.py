@@ -6,6 +6,7 @@ import jax
 import matplotlib.pyplot as plt
 
 from spscml.straightforward_dlra.solver import Solver
+from spscml.straightforward_dlra.poisson import solve_poisson_ys
 from spscml.plasma import TwoSpeciesPlasma
 from spscml.grids import Grid, PhaseSpaceGrid
 from spscml.utils import zeroth_moment, first_moment
@@ -65,7 +66,11 @@ dtmax = x_grid.dx / electron_grid.vmax / 10
 print("dt = ", dtmax)
 
 solve = jax.jit(lambda: solver.solve(0.01/2, 6000, initial_conditions, boundary_conditions, 0.01))
-result = solve()
+solution = solve()
+
+# Extract the final timestep
+frame = lambda i: jax.tree.map(lambda ys: ys[i, ...], solution.ys)
+result = frame(-1)  # Get the last timestep
 
 Xt, S, V = result['electron']
 fe = Xt.T @ S @ V
@@ -79,7 +84,7 @@ fi = Xt.T @ S @ V
 ni = Xt.T @ S @ (V @ jnp.ones(ion_grid.Nv)) * ion_grid.dv
 ji = Xt.T @ S @ (V @ ion_grid.vs) * ion_grid.dv
 
-E = solver.solve_poisson_ys(result, grids, boundary_conditions)
+E = solve_poisson_ys(result, grids, boundary_conditions, plasma)
 
 
 fig, axes = plt.subplots(4, 1, figsize=(10, 8))

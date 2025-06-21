@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from ...poisson import poisson_solve
+from ..poisson import poisson_solve
 
 
 def solve_poisson_ys(ys, grids, bcs, plasma):
