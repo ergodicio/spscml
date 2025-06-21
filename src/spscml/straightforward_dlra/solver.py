@@ -79,7 +79,7 @@ class Solver(eqx.Module):
 
         def step_Ks_with_E_RHS(Ks):
             E = self.solve_poisson_KV(Ks, ys, self.grids, args['bcs'])
-            return { sp: self.K_step_single_species_nonstiff_RHS(Ks[sp], self.grids[sp], 
+            return { sp: self.K_step_single_species_RHS(Ks[sp], self.grids[sp], 
                                                                  {**args_of(sp), 'E': E})
                     for sp in SPECIES }
 
@@ -96,7 +96,7 @@ class Solver(eqx.Module):
         return { sp: XSV_of(Ks[sp], ys[sp], self.grids[sp]) for sp in SPECIES }
 
 
-    def K_step_single_species_nonstiff_RHS(self, K, grid, args):
+    def K_step_single_species_RHS(self, K, grid, args):
         V, E = args['V'], args['E']
         v = grid.vs
         r = self.r
@@ -143,7 +143,7 @@ class Solver(eqx.Module):
 
         def step_Ss_with_E_RHS(Ss):
             E = self.solve_poisson_XSV(Ss, ys, self.grids, args['bcs'])
-            return { sp: self.S_step_single_species_nonstiff_RHS(Ss[sp], self.grids[sp], 
+            return { sp: self.S_step_single_species_RHS(Ss[sp], self.grids[sp], 
                                                                  {**args_of(sp), 'E': E})
                     for sp in SPECIES }
 
@@ -158,7 +158,7 @@ class Solver(eqx.Module):
         return { sp: XSV_of(Ss[sp], ys[sp]) for sp in SPECIES }
 
 
-    def S_step_single_species_nonstiff_RHS(self, S, grid, args):
+    def S_step_single_species_RHS(self, S, grid, args):
         X, V, E = args['X'], args['V'], args['E']
         v = grid.vs
         r = self.r
@@ -207,7 +207,7 @@ class Solver(eqx.Module):
 
         def step_Ls_with_E_RHS(Ls):
             E = self.solve_poisson_XL(Ls, ys, self.grids, args['bcs'])
-            return { sp: self.L_step_single_species_nonstiff_RHS(Ls[sp], self.grids[sp], 
+            return { sp: self.L_step_single_species_RHS(Ls[sp], self.grids[sp], 
                                                                  {**args_of(sp), 'E': E})
                     for sp in SPECIES }
         
@@ -223,7 +223,7 @@ class Solver(eqx.Module):
         return { sp: XSV_of(Ls[sp], ys[sp], self.grids[sp]) for sp in SPECIES }
 
 
-    def L_step_single_species_nonstiff_RHS(self, L, grid, args):
+    def L_step_single_species_RHS(self, L, grid, args):
         X, E = args['X'], args['E']
         v = grid.vs
         r = self.r
