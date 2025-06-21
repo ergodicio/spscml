@@ -5,7 +5,7 @@ from diffrax import diffeqsolve, Euler, Dopri5, ODETerm, PIDController, RESULTS,
 
 from jaxtyping import PyTree
 
-from ..fulltensor_vfp.dougherty import lbo_operator_ij_L_diagonals
+from ..fulltensor_vlasov.dougherty import lbo_operator_ij_L_diagonals
 from ..plasma import TwoSpeciesPlasma
 from ..rk import rk1, ssprk2
 from ..muscl import slope_limited_flux, slope_limited_flux_divergence

@@ -16,7 +16,7 @@ import mlflow
 from tesseract_core.runtime.tree_transforms import filter_func, flatten_with_paths
 
 from spscml.sheath_interface import SheathInputSchema, SheathOutputSchema
-from spscml.fulltensor_vfp.sheath_model import make_plasma, reduced_mfp_for_sim, calculate_plasma_current
+from spscml.fulltensor_vlasov.sheath_model import make_plasma, reduced_mfp_for_sim, calculate_plasma_current
 from spscml.utils import first_moment
 from spscml.normalization import plasma_norm
 from spscml.plasma import TwoSpeciesPlasma
