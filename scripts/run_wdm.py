@@ -17,12 +17,57 @@ jax.config.update("jax_enable_x64", True)
 
 ureg = jpu.UnitRegistry()
 
+# Parse command line arguments
+def parse_args():
+    args = sys.argv[1:]  # Skip the script name
+    
+    # Default values
+    Vc0 = 40*1e3  # 40kV
+    T = 20.0      # 20 eV
+    Vp = 500.0    # 500 V
+    image = "tanh_sheath"  # Default tesseract image
+    
+    # Parse arguments
+    i = 0
+    while i < len(args):
+        if args[i] == '--Vc0' and i + 1 < len(args):
+            Vc0 = float(args[i + 1])
+            i += 2
+        elif args[i] == '--T' and i + 1 < len(args):
+            T = float(args[i + 1])
+            i += 2
+        elif args[i] == '--Vp' and i + 1 < len(args):
+            Vp = float(args[i + 1])
+            i += 2
+        elif args[i] == '--image' and i + 1 < len(args):
+            image = args[i + 1]
+            i += 2
+        elif args[i] == '--help' or args[i] == '-h':
+            print("Usage: python run_wdm.py [--Vc0 VALUE] [--T VALUE] [--Vp VALUE] [--image NAME]")
+            print("  --Vc0 VALUE   Total capacitor voltage in volts (default: 40000)")
+            print("  --T VALUE     Initial temperature in eV (default: 20.0)")
+            print("  --Vp VALUE    Initial plasma voltage in volts (default: 500.0)")
+            print("  --image NAME  Tesseract image name (default: vlasov_sheath)")
+            print("  --help, -h    Show this help message")
+            sys.exit(0)
+        else:
+            print(f"Unknown argument: {args[i]}")
+            print("Use --help for usage information")
+            sys.exit(1)
+            
+    return Vc0, T, Vp, image
+
+Vc0, T_input, Vp_input, image_name = parse_args()
+
+print(f"Running WDM simulation with:")
+print(f"  Vc0 = {Vc0} V")
+print(f"  T = {T_input} eV") 
+print(f"  Vp = {Vp_input} V")
+print(f"  Tesseract image = {image_name}")
+
 R = 1.5e-3
 L = 2.0e-7
 C = 222*1e-6
-
-# Charge to 50kV
-Vc0 = 40*1e3
 
 Lz = 0.5
 Lp = -.4e-7
@@ -34,10 +79,10 @@ n0 = 6e22 * ureg.m**-3
 
 Z = 1.0
 
-with Tesseract.from_image("vlasov_sheath") as sheath_tx:
-    Vp0 = 500.0 * ureg.volts
+with Tesseract.from_image(image_name) as sheath_tx:
+    Vp0 = Vp_input * ureg.volts
 
-    T0 = 20.0 * ureg.eV
+    T0 = T_input * ureg.eV
     j = sheath_tx.apply(dict(
         n=n0.magnitude, T=T0.magnitude, Vp=Vp0.magnitude, Lz=0.5
         ))["j"] * (ureg.A / ureg.m**2)
