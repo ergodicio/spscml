@@ -122,17 +122,6 @@ class Solver(eqx.Module):
         return dict(electron=electron_rhs, ion=ion_rhs)
 
 
-    def collision_frequency_shape_func(self):
-        L = self.grids['x'].Lx
-
-        midpt = L/4
-        # Want 10 e-foldings between the midpoint (2/3rds of the way to the sheath)
-        # and the wall
-        efolding_dist = (midpt/2)/20
-        x = self.grids['x'].xs
-        h0 = lambda x: 1 + jnp.exp((x/efolding_dist) - midpt/efolding_dist)
-        h = 1 / (0.5 * (h0(x) + h0(-x)))
-        return jnp.expand_dims(h, axis=1)
 
 
     def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs, nu):

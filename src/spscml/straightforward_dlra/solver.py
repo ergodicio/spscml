@@ -9,6 +9,7 @@ from ..plasma import TwoSpeciesPlasma
 from ..rk import rk1, ssprk2
 from ..muscl import slope_limited_flux, slope_limited_flux_divergence
 from ..poisson import poisson_solve
+from ..collisions import collision_frequency_shape_func
 
 SPECIES = ['electron', 'ion']
 
@@ -122,7 +123,7 @@ class Solver(eqx.Module):
         gamma = args['flux_out'] * self.flux_source_shape_func()
 
         n = (K.T @ (V @ jnp.ones(grid.Nv)) * grid.dv).T
-        nu = args['nu'] * self.collision_frequency_shape_func()
+        nu = args['nu'] * collision_frequency_shape_func(self.grids)
         M = self.maxwellian(grid, args)
         VM = V @ M * grid.dv
 
@@ -180,7 +181,7 @@ class Solver(eqx.Module):
         gamma = args['flux_out'] * self.flux_source_shape_func()
 
         n = (X.T @ S @ (V @ jnp.ones(grid.Nv)) * grid.dv).T
-        nu = args['nu'] * self.collision_frequency_shape_func()
+        nu = args['nu'] * collision_frequency_shape_func(self.grids)
         X_nu_gamma_vec = X @ (n*nu + gamma) * grid.dx
         X_nu_matrix = X @ jnp.diag(nu) @ X.T * grid.dx
         M = self.maxwellian(grid, args)
@@ -241,7 +242,7 @@ class Solver(eqx.Module):
         gamma = args['flux_out'] * self.flux_source_shape_func()
 
         n = (X.T @ (L @ jnp.ones(grid.Nv)) * grid.dv).T
-        nu = args['nu'] * self.collision_frequency_shape_func()
+        nu = args['nu'] * collision_frequency_shape_func(self.grids)
         X_nu_gamma_vec = X @ (gamma + n*nu) * grid.dx
         X_nu_matrix = X @ jnp.diag(nu) @ X.T * grid.dx
         M = self.maxwellian(grid, args)
@@ -296,17 +297,6 @@ class Solver(eqx.Module):
         return X.T @ L_mass_vector * Z
 
     
-    def collision_frequency_shape_func(self):
-        L = self.grids['x'].Lx
-
-        midpt = L/4
-        # Want 10 e-foldings between the midpoint (2/3rds of the way to the sheath)
-        # and the wall
-        efolding_dist = (midpt/2)/20
-        x = self.grids['x'].xs
-        h0 = lambda x: 1 + jnp.exp((x/efolding_dist) - midpt/efolding_dist)
-        h = 1 / (0.5 * (h0(x) + h0(-x)))
-        return h
 
 
     def flux_source_shape_func(self):
