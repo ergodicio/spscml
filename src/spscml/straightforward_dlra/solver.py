@@ -9,7 +9,7 @@ from ..plasma import TwoSpeciesPlasma
 from ..rk import rk1, ssprk2
 from ..muscl import slope_limited_flux, slope_limited_flux_divergence
 from ..poisson import poisson_solve
-from ..collisions import collision_frequency_shape_func
+from ..collisions_and_sources import collision_frequency_shape_func, flux_source_shape_func
 
 SPECIES = ['electron', 'ion']
 
@@ -73,7 +73,7 @@ class Solver(eqx.Module):
         self.boundary_type = boundary_type
         self.As = {'electron': self.plasma.Ae, 'ion': self.plasma.Ai}
         self.Zs = {'electron': self.plasma.Ze, 'ion': self.plasma.Zi}
-        self.nus = {'electron': self.nu_ee, 'ion': self.nu_ii}
+        self.nus = {'electron': nu_ee, 'ion': nu_ii}
 
 
     def solve(self, dt, Nt, initial_conditions, boundary_conditions, dtmax):
@@ -199,7 +199,7 @@ class Solver(eqx.Module):
         E_minus = jnp.atleast_2d(jnp.where(fac*E < 0, fac*E, 0.0))
         E_flux = (V_left_matrix @ (K * E_plus) + V_right_matrix @ (K * E_minus))
 
-        gamma = args['flux_out'] * self.flux_source_shape_func()
+        gamma = args['flux_out'] * flux_source_shape_func(self.grids['x'])
 
         n = (K.T @ (V @ jnp.ones(grid.Nv)) * grid.dv).T
         nu = args['nu'] * collision_frequency_shape_func(self.grids)
@@ -279,7 +279,7 @@ class Solver(eqx.Module):
         E_minus_matrix = X @ jnp.diag(jnp.where(fac*E < 0, fac*E, 0.0)) @ X.T * grid.dx
         E_term = (E_plus_matrix @ S @ V_left_matrix.T + E_minus_matrix @ S @ V_right_matrix.T)
 
-        gamma = args['flux_out'] * self.flux_source_shape_func()
+        gamma = args['flux_out'] * flux_source_shape_func(self.grids['x'])
 
         n = (X.T @ S @ (V @ jnp.ones(grid.Nv)) * grid.dv).T
         nu = args['nu'] * collision_frequency_shape_func(self.grids)
@@ -362,7 +362,7 @@ class Solver(eqx.Module):
         E_flux_func = lambda left, right: E_plus_matrix @ left + E_minus_matrix @ right
         E_flux = slope_limited_flux_divergence(L_bcs, SCHEME, E_flux_func, grid.dv, axis=1)
 
-        gamma = args['flux_out'] * self.flux_source_shape_func()
+        gamma = args['flux_out'] * flux_source_shape_func(self.grids['x'])
 
         n = (X.T @ (L @ jnp.ones(grid.Nv)) * grid.dv).T
         nu = args['nu'] * collision_frequency_shape_func(self.grids)
@@ -504,15 +504,6 @@ class Solver(eqx.Module):
         return X.T @ L_mass_vector * Z
 
     
-    def flux_source_shape_func(self):
-        """
-        Compute flux source shape function for particle injection.
-        
-        Returns:
-            Spatial shape function for flux source
-        """
-        Ls = self.grids['x'].Lx / 4
-        return (1 / Ls - jnp.abs(self.grids['x'].xs) / Ls**2)
 
 
     def ion_flux_out(self, ys):

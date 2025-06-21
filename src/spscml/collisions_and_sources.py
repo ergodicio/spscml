@@ -26,3 +26,17 @@ def collision_frequency_shape_func(grids, expand_dims=False):
         return jnp.expand_dims(h, axis=1)
     else:
         return h
+
+
+def flux_source_shape_func(x_grid):
+    """
+    Compute flux source shape function for particle injection.
+    
+    Args:
+        x_grid: Spatial grid object
+        
+    Returns:
+        Spatial shape function for flux source
+    """
+    Ls = x_grid.Lx / 4
+    return (1 / Ls - jnp.abs(x_grid.xs) / Ls**2)

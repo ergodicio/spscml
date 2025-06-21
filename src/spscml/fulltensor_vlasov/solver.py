@@ -14,6 +14,7 @@ from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
 from ..utils import zeroth_moment, first_moment, second_moment
+from ..collisions_and_sources import flux_source_shape_func
 
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
@@ -104,12 +105,7 @@ class Solver(eqx.Module):
             ion_particle_flux = first_moment(fi, self.grids['ion'])
             total_ion_wall_flux = -ion_particle_flux[0] + ion_particle_flux[-1]
 
-            grid = self.grids['x']
-            L_flux_source = grid.Lx / 4
-            flux_source_weight = jnp.where(jnp.abs(grid.xs) < L_flux_source, 
-                                           1 / L_flux_source - jnp.abs(grid.xs) / L_flux_source**2,
-                                           0.0)
-            flux_source_weight = jnp.expand_dims(flux_source_weight, axis=1)
+            flux_source_weight = jnp.maximum(flux_source_shape_func(self.grids['x']), 0.0)[:, None]
             fe0 = jnp.expand_dims(f0['electron'][self.grids['x'].Nx // 2, :], axis=0)
             fi0 = jnp.expand_dims(f0['ion'][self.grids['x'].Nx // 2, :], axis=0)
 
