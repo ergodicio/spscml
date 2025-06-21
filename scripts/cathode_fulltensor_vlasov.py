@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import jax
 import matplotlib.pyplot as plt
 
-from spscml.fulltensor_vfp.solver import Solver
+from spscml.fulltensor_vlasov.solver import Solver
 from spscml.plasma import TwoSpeciesPlasma
 from spscml.grids import Grid, PhaseSpaceGrid
 

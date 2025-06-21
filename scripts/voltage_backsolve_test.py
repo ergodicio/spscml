@@ -4,7 +4,7 @@ sys.path.append("src")
 import jax.numpy as jnp
 import jax
 
-from spscml.fulltensor_vfp.sheath_model import calculate_plasma_current
+from spscml.fulltensor_vlasov.sheath_model import calculate_plasma_current
 
 jax.config.update("jax_enable_x64", True)
 
