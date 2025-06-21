@@ -28,7 +28,7 @@ def solve_poisson_KV(Ks, ys, grids, bcs, plasma):
     
     Args:
         Ks: Dictionary of K matrices for each species
-        ys: Current state (for accessing V components)
+        ys: Current XSV state (for accessing V components)
         grids: Dictionary of grids
         bcs: Boundary conditions for Poisson equation
         plasma: Plasma configuration
@@ -55,8 +55,8 @@ def rho_c_species_KV(K, V, Z, grid):
     Returns:
         Charge density contribution from this species
     """
-    V_mass_vector = V @ jnp.ones(grid.Nv) * grid.dv
-    return (K.T @ V_mass_vector) * Z
+    # HACKATHON: TODO
+    raise NotImplementedError("HACKATHON: Implement rho_c_species_KV")
 
 
 def solve_poisson_XSV(Ss, ys, grids, bcs, plasma):
@@ -65,7 +65,7 @@ def solve_poisson_XSV(Ss, ys, grids, bcs, plasma):
     
     Args:
         Ss: Dictionary of S matrices for each species
-        ys: Current state (for accessing X and V components)
+        ys: Current XSV state (for accessing X and V components)
         grids: Dictionary of grids
         bcs: Boundary conditions for Poisson equation
         plasma: Plasma configuration
@@ -94,8 +94,8 @@ def rho_c_species_XSV(X, S, V, Z, grid):
     Returns:
         Charge density contribution from this species
     """
-    V_mass_vector = V @ jnp.ones(grid.Nv) * grid.dv
-    return (X.T @ S @ V_mass_vector) * Z
+    # HACKATHON: TODO
+    raise NotImplementedError("HACKATHON: Implement rho_c_species_XSV")
 
 
 def solve_poisson_XL(Ls, ys, grids, bcs, plasma):
@@ -103,8 +103,8 @@ def solve_poisson_XL(Ls, ys, grids, bcs, plasma):
     Solve Poisson equation given L matrices and X from current state.
     
     Args:
-        Ls: Dictionary of L matrices (S V) for each species
-        ys: Current state (for accessing X components)
+        Ls: Dictionary of L matrices (S*V) for each species
+        ys: Current XSV state (for accessing X components)
         grids: Dictionary of grids
         bcs: Boundary conditions for Poisson equation
         plasma: Plasma configuration
@@ -124,12 +124,12 @@ def rho_c_species_XL(X, L, Z, grid):
     
     Args:
         X: X matrix
-        L: L matrix (S V)
+        L: L matrix (S*V)
         Z: Charge number
         grid: Phase space grid
         
     Returns:
         Charge density contribution from this species
     """
-    L_mass_vector = L @ jnp.ones(grid.Nv) * grid.dv
-    return X.T @ L_mass_vector * Z
+    # HACKATHON: TODO
+    raise NotImplementedError("HACKATHON: Implement rho_c_species_XL")
