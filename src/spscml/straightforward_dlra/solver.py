@@ -16,11 +16,34 @@ SPECIES = ['electron', 'ion']
 SCHEME = 'upwind'
 
 class Solver(eqx.Module):
+    """
+    Straightforward Dynamical Low-Rank Approximation (DLRA) solver for the Vlasov-BGK equation.
+    
+    This solver uses the KSL splitting approach for the DLRA method, where the solution is decomposed
+    into low-rank factors X, S, V and evolved using separate steps for K, S, and L components.
+
+    The X and V factors are both expected to be "wide": that is, they have shapes
+    
+        X.shape == (r, Nx)
+        V.shape == (r, Nv)
+
+    The full distribution function can be recovered by multiplying through:
+
+        f = X.T @ S @ V
+
+    
+    Attributes:
+        plasma: Two-species plasma configuration
+        r: Rank of the low-rank approximation
+        grids: Dictionary containing spatial and phase space grids
+        boundary_type: Type of boundary conditions ('AbsorbingWall' or 'Periodic')
+        As: Dictionary of mass ratios for each species
+        Zs: Dictionary of charge numbers for each species
+        nus: Dictionary of collision frequencies for each species
+    """
     plasma: TwoSpeciesPlasma
     r: int
     grids: PyTree
-    nu_ee: float
-    nu_ii: float
     boundary_type: str
     As: dict
     Zs: dict
@@ -33,11 +56,20 @@ class Solver(eqx.Module):
                  grids,
                  nu_ee, nu_ii,
                  boundary_type='AbsorbingWall'):
+        """
+        Initialize the DLRA solver.
+        
+        Args:
+            plasma: Two-species plasma configuration
+            r: Rank of the low-rank approximation
+            grids: Dictionary containing spatial and phase space grids
+            nu_ee: Electron-electron collision frequency
+            nu_ii: Ion-ion collision frequency
+            boundary_type: Type of boundary conditions ('AbsorbingWall' or 'Periodic')
+        """
         self.plasma = plasma
         self.r = r
         self.grids = grids
-        self.nu_ee = nu_ee
-        self.nu_ii = nu_ii
         self.boundary_type = boundary_type
         self.As = {'electron': self.plasma.Ae, 'ion': self.plasma.Ai}
         self.Zs = {'electron': self.plasma.Ze, 'ion': self.plasma.Zi}
@@ -45,7 +77,20 @@ class Solver(eqx.Module):
 
 
     def solve(self, dt, Nt, initial_conditions, boundary_conditions, dtmax):
-        f0 = {
+        """
+        Solve the Vlasov-BGK equation using the DLRA method.
+        
+        Args:
+            dt: Time step size
+            Nt: Number of time steps
+            initial_conditions: Dictionary of initial condition functions for each species
+            boundary_conditions: Dictionary of boundary condition specifications
+            dtmax: Maximum time step (for adaptive stepping)
+            
+        Returns:
+            Final low-rank factors (X, S, V) for each species
+        """
+        y0 = {
             'electron': initial_conditions['electron'](*self.grids['electron'].xv),
             'ion': initial_conditions['ion'](*self.grids['ion'].xv),
         }
@@ -57,16 +102,28 @@ class Solver(eqx.Module):
             t1=Nt*dt,
             max_steps=Nt + 4,
             dt0=dt,
-            y0=f0,
-            args={"f0": f0, "dt": dt, 'bcs': boundary_conditions},
+            y0=y0,
+            args={"dt": dt, 'bcs': boundary_conditions},
             saveat=SaveAt(ts=jnp.linspace(0.0, Nt*dt, 100)),
         )
-        return jax.tree.map(lambda fs: fs[-1, ...], solution.ys)
+
+        # Return the final timestep
+        return jax.tree.map(lambda ys: ys[-1, ...], solution.ys)
 
 
     def step(self, t, ys, args):
+        """
+        Perform one time step using KSL splitting.
+        
+        Args:
+            t: Current time
+            ys: Current state (XSV decomposition for each species)
+            args: Additional arguments containing dt, boundary conditions, etc.
+            
+        Returns:
+            Updated state after one time step
+        """
         dt = args['dt']
-        half_dt_args = {**args, 'dt': dt/2}
         ys = self.step_K(t, ys, args)
         ys = self.step_S(t, ys, args)
         ys = self.step_L(t, ys, args)
@@ -74,6 +131,17 @@ class Solver(eqx.Module):
 
 
     def step_K(self, t, ys, args):
+        """
+        Perform K-step of the KSL splitting (evolve X^T S component).
+        
+        Args:
+            t: Current time
+            ys: Current state (XSV decomposition for each species)
+            args: Additional arguments
+            
+        Returns:
+            Updated state after K-step
+        """
         K_of = lambda X, S, V: (X.T @ S).T
 
         flux_out = self.ion_flux_out(ys)
@@ -98,6 +166,17 @@ class Solver(eqx.Module):
 
 
     def K_step_single_species_RHS(self, K, grid, args):
+        """
+        Compute right-hand side for K-step for a single species.
+        
+        Args:
+            K: Current K matrix (X^T S)
+            grid: Phase space grid for the species
+            args: Arguments containing V, E, collision parameters, etc.
+            
+        Returns:
+            Time derivative of K matrix
+        """
         V, E = args['V'], args['E']
         v = grid.vs
         r = self.r
@@ -133,6 +212,17 @@ class Solver(eqx.Module):
 
 
     def step_S(self, t, ys, args):
+        """
+        Perform S-step of the KSL splitting (evolve S component).
+        
+        Args:
+            t: Current time
+            ys: Current state (XSV decomposition for each species)
+            args: Additional arguments
+            
+        Returns:
+            Updated state after S-step
+        """
         flux_out = self.ion_flux_out(ys)
         S_of = lambda X, S, V: S
         args_of = lambda sp: {**args, 'X': ys[sp][0], 'V': ys[sp][2],
@@ -155,6 +245,17 @@ class Solver(eqx.Module):
 
 
     def S_step_single_species_RHS(self, S, grid, args):
+        """
+        Compute right-hand side for S-step for a single species.
+        
+        Args:
+            S: Current S matrix
+            grid: Phase space grid for the species
+            args: Arguments containing X, V, E, collision parameters, etc.
+            
+        Returns:
+            Time derivative of S matrix
+        """
         X, V, E = args['X'], args['V'], args['E']
         v = grid.vs
         r = self.r
@@ -192,6 +293,17 @@ class Solver(eqx.Module):
 
 
     def step_L(self, t, ys, args):
+        """
+        Perform L-step of the KSL splitting (evolve S V component).
+        
+        Args:
+            t: Current time
+            ys: Current state (XSV decomposition for each species)
+            args: Additional arguments
+            
+        Returns:
+            Updated state after L-step
+        """
         L_of = lambda X, S, V: S @ V
         flux_out = self.ion_flux_out(ys)
         args_of = lambda sp: {**args, 'X': ys[sp][0], 'Z': self.Zs[sp], 'A': self.As[sp], 
@@ -214,6 +326,17 @@ class Solver(eqx.Module):
 
 
     def L_step_single_species_RHS(self, L, grid, args):
+        """
+        Compute right-hand side for L-step for a single species.
+        
+        Args:
+            L: Current L matrix (S V)
+            grid: Phase space grid for the species
+            args: Arguments containing X, E, collision parameters, etc.
+            
+        Returns:
+            Time derivative of L matrix
+        """
         X, E = args['X'], args['E']
         v = grid.vs
         r = self.r
@@ -253,6 +376,17 @@ class Solver(eqx.Module):
 
 
     def solve_poisson_ys(self, ys, grids, bcs):
+        """
+        Solve Poisson equation given current state in XSV format.
+        
+        Args:
+            ys: Current state (XSV decomposition for each species)
+            grids: Dictionary of grids
+            bcs: Boundary conditions for Poisson equation
+            
+        Returns:
+            Electric field
+        """
         rho_c = self.rho_c_species_XSV(*ys['electron'], 
                                       self.plasma.Ze, grids['electron']) + \
                 self.rho_c_species_XSV(*ys['ion'],
@@ -261,6 +395,18 @@ class Solver(eqx.Module):
 
 
     def solve_poisson_KV(self, Ks, ys, grids, bcs):
+        """
+        Solve Poisson equation given K matrices and V from current state.
+        
+        Args:
+            Ks: Dictionary of K matrices for each species
+            ys: Current state (for accessing V components)
+            grids: Dictionary of grids
+            bcs: Boundary conditions for Poisson equation
+            
+        Returns:
+            Electric field
+        """
         rho_c = self.rho_c_species_KV(Ks['electron'], ys['electron'][2], 
                                       self.plasma.Ze, grids['electron']) + \
                 self.rho_c_species_KV(Ks['ion'], ys['ion'][2], self.plasma.Zi, grids['ion'])
@@ -268,11 +414,35 @@ class Solver(eqx.Module):
 
 
     def rho_c_species_KV(self, K, V, Z, grid):
+        """
+        Compute charge density for a species from K and V matrices.
+        
+        Args:
+            K: K matrix (X^T S)
+            V: V matrix
+            Z: Charge number
+            grid: Phase space grid
+            
+        Returns:
+            Charge density contribution from this species
+        """
         V_mass_vector = V @ jnp.ones(grid.Nv) * grid.dv
         return (K.T @ V_mass_vector) * Z
 
 
     def solve_poisson_XSV(self, Ss, ys, grids, bcs):
+        """
+        Solve Poisson equation given S matrices and X, V from current state.
+        
+        Args:
+            Ss: Dictionary of S matrices for each species
+            ys: Current state (for accessing X and V components)
+            grids: Dictionary of grids
+            bcs: Boundary conditions for Poisson equation
+            
+        Returns:
+            Electric field
+        """
         rho_c = self.rho_c_species_XSV(ys['electron'][0], Ss['electron'], ys['electron'][2],
                                       self.plasma.Ze, grids['electron']) + \
                 self.rho_c_species_XSV(ys['ion'][0], Ss['ion'], ys['ion'][2], 
@@ -281,11 +451,36 @@ class Solver(eqx.Module):
 
 
     def rho_c_species_XSV(self, X, S, V, Z, grid):
+        """
+        Compute charge density for a species from X, S, V matrices.
+        
+        Args:
+            X: X matrix
+            S: S matrix
+            V: V matrix
+            Z: Charge number
+            grid: Phase space grid
+            
+        Returns:
+            Charge density contribution from this species
+        """
         V_mass_vector = V @ jnp.ones(grid.Nv) * grid.dv
         return (X.T @ S @ V_mass_vector) * Z
 
 
     def solve_poisson_XL(self, Ls, ys, grids, bcs):
+        """
+        Solve Poisson equation given L matrices and X from current state.
+        
+        Args:
+            Ls: Dictionary of L matrices (S V) for each species
+            ys: Current state (for accessing X components)
+            grids: Dictionary of grids
+            bcs: Boundary conditions for Poisson equation
+            
+        Returns:
+            Electric field
+        """
         rho_c = self.rho_c_species_XL(ys['electron'][0], Ls['electron'], 
                                       self.plasma.Ze, grids['electron']) + \
                 self.rho_c_species_XL(ys['ion'][0], Ls['ion'], self.plasma.Zi, grids['ion'])
@@ -293,18 +488,43 @@ class Solver(eqx.Module):
 
 
     def rho_c_species_XL(self, X, L, Z, grid):
+        """
+        Compute charge density for a species from X and L matrices.
+        
+        Args:
+            X: X matrix
+            L: L matrix (S V)
+            Z: Charge number
+            grid: Phase space grid
+            
+        Returns:
+            Charge density contribution from this species
+        """
         L_mass_vector = L @ jnp.ones(grid.Nv) * grid.dv
         return X.T @ L_mass_vector * Z
 
     
-
-
     def flux_source_shape_func(self):
+        """
+        Compute flux source shape function for particle injection.
+        
+        Returns:
+            Spatial shape function for flux source
+        """
         Ls = self.grids['x'].Lx / 4
         return (1 / Ls - jnp.abs(self.grids['x'].xs) / Ls**2)
 
 
     def ion_flux_out(self, ys):
+        """
+        Compute ion flux leaving the domain boundaries.
+        
+        Args:
+            ys: Current state (XSV decomposition for each species)
+            
+        Returns:
+            Net ion flux out of the domain
+        """
         X, S, V = ys['ion']
         K = (X.T @ S).T
         v = self.grids['ion'].vs
@@ -314,6 +534,18 @@ class Solver(eqx.Module):
 
 
     def apply_K_bcs(self, K, V, grid, n_ghost_cells):
+        """
+        Apply boundary conditions to K matrix in velocity space.
+        
+        Args:
+            K: K matrix (X^T S)
+            V: V matrix
+            grid: Phase space grid
+            n_ghost_cells: Number of ghost cells to add
+            
+        Returns:
+            K matrix with boundary conditions applied
+        """
         v = grid.vs
         V_leftgoing_matrix = V @ jnp.diag(jnp.where(v < 0, 1.0, 0.0)) @ V.T * grid.dv
         V_rightgoing_matrix = V @ jnp.diag(jnp.where(v > 0, 1.0, 0.0)) @ V.T * grid.dv
@@ -348,6 +580,16 @@ class Solver(eqx.Module):
 
 
     def maxwellian(self, grid, args):
+        """
+        Compute Maxwellian distribution for collision operator.
+        
+        Args:
+            grid: Phase space grid
+            args: Arguments containing mass ratio A
+            
+        Returns:
+            Maxwellian distribution in velocity space
+        """
         v = grid.vs
         T = 1.0
         n = 1.0
@@ -357,6 +599,15 @@ class Solver(eqx.Module):
 
 
     def collision_frequency(self, args):
+        """
+        Compute spatially varying collision frequency.
+        
+        Args:
+            args: Arguments containing collision frequency nu
+            
+        Returns:
+            Collision frequency as function of space
+        """
         L = self.grids['x'].Lx
 
         midpt = L/4
@@ -371,11 +622,27 @@ class Solver(eqx.Module):
 
 class Stepper(Euler):
     """
-
-    :param cfg:
+    Custom stepper for the DLRA solver.
+    
+    Inherits from Euler solver but uses custom time stepping logic.
     """
 
     def step(self, terms, t0, t1, y0, args, solver_state, made_jump):
+        """
+        Perform one step of the custom stepper.
+        
+        Args:
+            terms: ODE terms
+            t0: Initial time
+            t1: Final time
+            y0: Initial state
+            args: Additional arguments
+            solver_state: Solver state (unused)
+            made_jump: Jump indicator (unused)
+            
+        Returns:
+            Tuple of (new_state, new_solver_state, dense_info, aux_stats, result)
+        """
         del solver_state, made_jump
         y1 = terms.vf(t0, y0, args | {"dt": t1 - t0})
         dense_info = dict(y0=y0, y1=y1)
