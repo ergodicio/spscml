@@ -14,6 +14,12 @@ from spscml.utils import zeroth_moment, first_moment
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_debug_nans", True)
 
+'''
+Run a weak Landau damping test of the dynamical low-rank solver.
+
+Fake out a single species Vlasov equation by setting the ion charge to zero.
+'''
+
 Te = 1.0
 Ti = 1.0
 ne = 1.0
@@ -42,7 +48,7 @@ def lowrank_factors(f, grid):
 
 ne = 1 + 0.01 * jnp.cos(electron_grid.xs / 2)
 initial_conditions = { 
-                      'electron': lambda x, v: lowrank_factors(ne[:, None] / (jnp.sqrt(2*jnp.pi)*vte) * jnp.exp(-Ae*(v**2) / (2*Te)), electron_grid),
+    'electron': lambda x, v: lowrank_factors(ne[:, None] / (jnp.sqrt(2*jnp.pi)*vte) * jnp.exp(-Ae*(v**2) / (2*Te)), electron_grid),
     'ion': lambda x, v: lowrank_factors(1 / (jnp.sqrt(2*jnp.pi)*vti) * jnp.exp(-Ai*(v**2) / (2*Ti)), ion_grid)
 }
 boundary_conditions = {
@@ -59,7 +65,6 @@ solve = jax.jit(lambda: solver.solve(0.004, 4000, initial_conditions, boundary_c
 solution = solve()
 
 frame = lambda i: jax.tree.map(lambda ys: ys[i, ...], solution.ys)
-
 
 Xt, S, V = solution.ys['electron']
 fe0 = Xt[0, ...].T @ S[0, ...] @ V[0, ...]
