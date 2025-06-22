@@ -33,14 +33,30 @@ def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
     Calculates the plasma current carried by a plasma with the given temperature and
     number density across an electrode gap at the given voltage.
 
-    params:
+    Args:
         - Vp: The electrode gap voltage [volts]
         - T: The plasma temperature [eV]
         - n: The plasma volumetric number density [m^-3]
 
-    returns:
-        - j: The space-averaged current density [amperes / m^2]
+    Returns: a dictionary containing solution values at the final time
+        - fe: The electron distribution function
+        - fi: The ion distribution function
+        - electron_grid: The phase space grid for the electrons
+        - ion_grid: The phase space grid for the ions
+        - je: The electron current density [amperes / m^2]
+        - ji: The ion current density [amperes / m^2]
+        - javg: The space-averaged total current density [amperes / m^2]
+        - E: The electric field [volts/meter]
+        - ne: The electron density
+        - ni: The ion density
     '''
+    jax.debug.print("=====================================================")
+    jax.debug.print("Running a sheath model with the following parameters:")
+    jax.debug.print("    Voltage: {} [volts]", Vp)
+    jax.debug.print("    Density: {} [meters^-3]", n)
+    jax.debug.print("    Temperature: {} [electron-volts]", T)
+    jax.debug.print("    Pinch length: {} [meters]", Lz)
+
     norm = plasma_norm(T, n)
     ureg = norm["ureg"]
 
@@ -95,10 +111,10 @@ def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
                     {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid},
                     flux_source_enabled=True, nu_ee=nu_ee, nu_ii=nu_ii, adjoint_method=adjoint_method)
 
-    s = 0.5
-    dtmax = jnp.minimum(s * x_grid.dx / (6*vte), nu_ee / electron_grid.dv**2)
+    CFL = 0.5
+    dtmax = jnp.minimum(CFL * x_grid.dx / (6*vte))
 
-    solve = lambda: solver.solve(1 * dtmax, 5000, initial_conditions, boundary_conditions, dtmax)
+    solve = lambda: solver.solve(dtmax, 5000, initial_conditions, boundary_conditions, dtmax)
     result = solve()
     je = -1 * first_moment(result['electron'], electron_grid)
     ji = 1 * first_moment(result['ion'], ion_grid)
@@ -110,7 +126,11 @@ def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
     Ti = temperature(result['ion'], plasma.Ai, ion_grid)
 
     j_avg = (j_avg * norm["j0"]).to(ureg.amperes / ureg.m**2).magnitude
-    jax.debug.print("j = {}", j_avg)
+    jax.debug.print("")
+    jax.debug.print("Result of the simulation:")
+    jax.debug.print("    Average current density j = {}, [amperes / meters^2]", j_avg)
+    jax.debug.print("")
+    jax.debug.print("")
 
     E = poisson_solve(x_grid, plasma, plasma.Zi*ni+plasma.Ze*ne, boundary_conditions)
 
@@ -123,5 +143,6 @@ def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
             ji=ji,
             j_avg=j_avg,
             E=E,
+            ne=ne,
             ni=ni,
             )
