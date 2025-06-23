@@ -75,7 +75,7 @@ solver = Solver(plasma,
                 flux_source_enabled=True,
                 nu_ee=nu*5, nu_ii=nu)
 
-solve = jax.jit(lambda: solver.solve(0.01/4, 12000, initial_conditions, boundary_conditions, 0.1))
+solve = jax.jit(lambda: solver.solve(0.01/8, 12000, initial_conditions, boundary_conditions, 0.1))
 result = solve()
 
 fe = result['electron']
