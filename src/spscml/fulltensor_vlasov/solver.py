@@ -144,7 +144,7 @@ class Solver(eqx.Module):
         T = 1.0
     
         
-        M = maxwellian(A,grid)
+        M = self.maxwellian(A,grid)
         #M = n / jnp.sqrt(2*jnp.pi * (T/A)) * jnp.exp(-A*(self.grids['v'].vs-nu/n)**2 / (2*T))
 
         
