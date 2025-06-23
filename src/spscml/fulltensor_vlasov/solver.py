@@ -115,7 +115,7 @@ class Solver(eqx.Module):
     def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs, nu):
         # free streaming term
         f_bc_x = self.apply_bcs(f, bcs, 'x')
-
+        
         v = jnp.expand_dims(grid.vs, axis=0)
         F = lambda left, right: jnp.where(v > 0, left * v, right * v)
         vdfdx = slope_limited_flux_divergence(f_bc_x, 'minmod', F, 
@@ -135,13 +135,13 @@ class Solver(eqx.Module):
        
        # HACKATHON: implement BGK collision term
         T = 1
-       
+        print(A.shape)
+        input()
         
         #M = maxwellian_1d_v2(A,n,nu,T,grid.vs)
         M = n / jnp.sqrt(2*jnp.pi * (T/A)) * jnp.exp(-A*(grid.vs-nu/n)**2 / (2*T))
 
-        print(M)
-        input()
+        
         
      
         col = nu * (n[:,None] * M[None,:]-f)
