@@ -13,7 +13,7 @@ from ..grids import PhaseSpaceGrid
 from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
-from ..utils import zeroth_moment, first_moment, second_moment, maxwellian_1d, maxwellian_1d_v2
+from ..utils import zeroth_moment, first_moment, second_moment, maxwellian_1d, maxwellian
 from ..collisions_and_sources import flux_source_shape_func
 
 class Solver(eqx.Module):
@@ -139,8 +139,8 @@ class Solver(eqx.Module):
         print(self.grids['v'].vs)
         input()
         
-        #M = maxwellian_1d_v2(A,n,nu,T,grid.vs)
-        M = n / jnp.sqrt(2*jnp.pi * (T/A)) * jnp.exp(-A*(self.grids['v'].vs-nu/n)**2 / (2*T))
+        M = maxwellian(A,grid.vs)
+        #M = n / jnp.sqrt(2*jnp.pi * (T/A)) * jnp.exp(-A*(self.grids['v'].vs-nu/n)**2 / (2*T))
 
         
         
