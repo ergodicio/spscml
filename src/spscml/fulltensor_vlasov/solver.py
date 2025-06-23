@@ -110,7 +110,7 @@ class Solver(eqx.Module):
         return dict(electron=electron_rhs, ion=ion_rhs)
 
     def maxwellian(self,A,grid):
-        v=grids.vs
+        v=grid.vs
         T=1.0
         n=1.0 
         theta=T/A
