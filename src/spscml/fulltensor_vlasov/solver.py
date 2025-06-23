@@ -13,7 +13,7 @@ from ..grids import PhaseSpaceGrid
 from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
-from ..utils import zeroth_moment, first_moment, second_moment, maxwellian_1d
+from ..utils import zeroth_moment, first_moment, second_moment, maxwellian_1d, maxwellian_1d_v2
 from ..collisions_and_sources import flux_source_shape_func
 
 class Solver(eqx.Module):
@@ -135,8 +135,8 @@ class Solver(eqx.Module):
        
        # HACKATHON: implement BGK collision term
         T = 1
-        funM = maxwellian_1d(A,n,nu,T)
-        M = funM(grid.xs,grid.vs)
+        funM = maxwellian_1d_v2(A,n,nu,T)
+        M = funM(grid.vs)
         print(M.shape)
         input()
      
