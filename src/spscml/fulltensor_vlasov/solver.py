@@ -137,9 +137,9 @@ class Solver(eqx.Module):
         Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', F, 
                                               grid.dv,
                                               axis=1)
-        n = self.plasma.Ze * zeroth_moment(f,grid) 
+        #n = self.plasma.Ze * zeroth_moment(f,grid) 
     
-       
+        n = zeroth_moment(f,grid) 
        # HACKATHON: implement BGK collision term
         T = 1.0
     
@@ -150,7 +150,7 @@ class Solver(eqx.Module):
         
         
      
-        col = nu * (M-f)
+        col = nu * (n[:,None] * M[None,:] - f)
         return -vdfdx - Edfdv + col
 
 
