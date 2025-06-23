@@ -138,6 +138,8 @@ class Solver(eqx.Module):
         T = 1
         funM = maxwellian_1d_v2(A,n,nu,T)
         M = funM(grid.vs)
+        print(M.shape)
+        input()
         
      
         col = nu * (n[:,None] * M[None,:]-f)
