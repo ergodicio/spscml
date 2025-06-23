@@ -13,7 +13,7 @@ from ..grids import PhaseSpaceGrid
 from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
-from ..utils import zeroth_moment, first_moment, second_moment, maxwellian_1d, maxwellian
+from ..utils import zeroth_moment, first_moment, second_moment, maxwellian_1d
 from ..collisions_and_sources import flux_source_shape_func
 
 class Solver(eqx.Module):
@@ -109,7 +109,14 @@ class Solver(eqx.Module):
 
         return dict(electron=electron_rhs, ion=ion_rhs)
 
-
+    def maxwellian(self,A,grid.vs):
+        v=grids.vs
+        T=1.0
+        n=1.0 
+        theta=T/A
+        
+        M = n / jnp.sqrt(2*jnp.pi * (T/A)) * jnp.exp(-A*(v-nu/n)**2 / (2*T))
+        return M
 
 
     def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs, nu):
@@ -134,12 +141,10 @@ class Solver(eqx.Module):
     
        
        # HACKATHON: implement BGK collision term
-        T = 1
-        print(A)
-        print(self.grids['v'].vs)
-        input()
+        T = 1.0
+    
         
-        M = maxwellian(A,grid.vs)
+        M = maxwellian(A,grid)
         #M = n / jnp.sqrt(2*jnp.pi * (T/A)) * jnp.exp(-A*(self.grids['v'].vs-nu/n)**2 / (2*T))
 
         
