@@ -150,7 +150,7 @@ class Solver(eqx.Module):
         
         
      
-        col = nu * (n[:,None] * M[None,:]-f)
+        col = nu * (M-f)
         return -vdfdx - Edfdv + col
 
 
