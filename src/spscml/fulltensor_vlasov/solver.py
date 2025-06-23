@@ -115,7 +115,7 @@ class Solver(eqx.Module):
         n=1.0 
         theta=T/A
         
-        M = n / jnp.sqrt(2*jnp.pi * (T/A)) * jnp.exp(-A*(v-nu/n)**2 / (2*T))
+        M = n / jnp.sqrt(2*jnp.pi * theta) * jnp.exp(-v**2 / (2*theta))
         return M
 
 
