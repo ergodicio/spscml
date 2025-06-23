@@ -129,7 +129,7 @@ class Solver(eqx.Module):
         F = lambda left, right: jnp.where(fac * E > 0, left * fac * E, right * fac * E)
         Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', F, 
                                               grid.dv,
-                                              axis=0)
+                                              axis=1)
        # HACKATHON: implement BGK collision term
         return -vdfdx-Edfdv
 
