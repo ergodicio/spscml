@@ -132,12 +132,12 @@ class Solver(eqx.Module):
                                               axis=1)
         n = self.plasma.Ze * zeroth_moment(f,grid) 
         nu = nu * jnp.ones(n.shape)
-        print(M.shape)
-        input()
+       
        # HACKATHON: implement BGK collision term
         T = 1
         M = maxwellian_1d(A,n,nu,T)
-        
+        print(M.shape)
+        input()
      
         col = nu * (n[:,None] * M[None,:]-f)
         return -vdfdx - Edfdv + col
