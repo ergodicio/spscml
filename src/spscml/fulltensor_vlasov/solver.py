@@ -14,7 +14,7 @@ from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
 from ..utils import zeroth_moment, first_moment, second_moment
-from ..collisions_and_sources import flux_source_shape_func, maxwellian
+from ..collisions_and_sources import flux_source_shape_func, maxwellian, collision_frequency_shape_func
 
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
@@ -119,8 +119,6 @@ class Solver(eqx.Module):
         return E
 
 
-
-
     def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs, nu):
         # free streaming term
         f_bc_x = self.apply_bcs(f, bcs, 'x')
@@ -141,12 +139,15 @@ class Solver(eqx.Module):
 
         n = zeroth_moment(f, grid)
         M = maxwellian(grid, A, n)
-        nu = nu * self.collision_frequency_shape_func().flatten()
+        assert M.shape == vdfdx.shape
+        nu = nu * collision_frequency_shape_func(self.grids).flatten()
     
-        BGK = nu[:, None] * (n[:, None] * M[None, :] - f)
+        BGK = nu[:, None] * (M - f)
 
+        assert Edfdv.shape == vdfdx.shape
+        assert BGK.shape == vdfdx.shape
 
-        return -vdfdx
+        return -vdfdx - Edfdv + BGK
 
 
     def apply_bcs(self, f, bcs, dim):
