@@ -136,11 +136,11 @@ class Solver(eqx.Module):
        # HACKATHON: implement BGK collision term
         T = 1
         print(A)
-        print(grid.vs)
+        print(self.grids['v'].vs)
         input()
         
         #M = maxwellian_1d_v2(A,n,nu,T,grid.vs)
-        M = n / jnp.sqrt(2*jnp.pi * (T/A)) * jnp.exp(-A*(grid.vs-nu/n)**2 / (2*T))
+        M = n / jnp.sqrt(2*jnp.pi * (T/A)) * jnp.exp(-A*(self.grids['v'].vs-nu/n)**2 / (2*T))
 
         
         
