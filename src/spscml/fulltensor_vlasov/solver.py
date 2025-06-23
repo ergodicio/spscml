@@ -83,7 +83,8 @@ class Solver(eqx.Module):
         # See poisson.py -- poisson_solve()
     
         #E = jnp.zeros(self.grids['x'].Nx)
-        rho_c = zeroth_moment(fs,self.grids)
+        rho_c = self.plasma.Ze * zeroth_moment(fe,self.grids['electron']) + \
+                self.plasma.Zi * zeroth_moment(fi,self.grids['ion'])
         E = poisson_solve(self.grids['x'],self.plasma,rho_c, boundary_conditions)
         electron_rhs = self.vlasov_fp_single_species_rhs(fe, E, self.plasma.Ae, self.plasma.Ze, 
                                                          self.grids['electron'],
