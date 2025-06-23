@@ -81,15 +81,17 @@ class Solver(eqx.Module):
         fi = fs['ion']
         # HACKATHON: Solve poisson equation for E
         # See poisson.py -- poisson_solve()
-        E = jnp.zeros(self.grids['x'].Nx)
-        
+    
+        #E = jnp.zeros(self.grids['x'].Nx)
+        rho_c = zeroth_moment(fs,self.grid)
+        E = poisson_solve(self.grids,self.plasma,rho_c, boundary_conditions)
         electron_rhs = self.vlasov_fp_single_species_rhs(fe, E, self.plasma.Ae, self.plasma.Ze, 
                                                          self.grids['electron'],
                                                          boundary_conditions['electron'], self.nu_ee)
         ion_rhs = self.vlasov_fp_single_species_rhs(fi, E, self.plasma.Ai, self.plasma.Zi, 
                                                          self.grids['ion'],
                                                          boundary_conditions['ion'], self.nu_ii)
-
+    
         if self.flux_source_enabled:
             ion_particle_flux = first_moment(fi, self.grids['ion'])
             total_ion_wall_flux = -ion_particle_flux[0] + ion_particle_flux[-1]
