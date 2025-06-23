@@ -14,7 +14,7 @@ from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
 from ..utils import zeroth_moment, first_moment, second_moment
-from ..collisions_and_sources import flux_source_shape_func
+from ..collisions_and_sources import flux_source_shape_func, maxwellian
 
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
@@ -79,9 +79,7 @@ class Solver(eqx.Module):
     def vlasov_rhs(self, fs, boundary_conditions, f0):
         fe = fs['electron']
         fi = fs['ion']
-        # HACKATHON: Solve poisson equation for E
-        # See poisson.py -- poisson_solve()
-        E = jnp.zeros(self.grids['x'].Nx)
+        E = self.poisson_solve_from_fs(fs, boundary_conditions)
         
         electron_rhs = self.vlasov_fp_single_species_rhs(fe, E, self.plasma.Ae, self.plasma.Ze, 
                                                          self.grids['electron'],
@@ -107,6 +105,20 @@ class Solver(eqx.Module):
         return dict(electron=electron_rhs, ion=ion_rhs)
 
 
+    def rho_c(self, fs):
+        fe = fs['electron']
+        fi = fs['ion']
+        ne = zeroth_moment(fe, self.grids['electron'])
+        ni = zeroth_moment(fi, self.grids['ion'])
+        rho_c = self.plasma.Ze * ne + self.plasma.Zi * ni
+        return rho_c
+
+
+    def poisson_solve_from_fs(self, fs, boundary_conditions):
+        E = poisson_solve(self.grids['x'], self.plasma, self.rho_c(fs), boundary_conditions)
+        return E
+
+
 
 
     def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs, nu):
@@ -119,9 +131,20 @@ class Solver(eqx.Module):
                                               grid.dx,
                                               axis=0)
 
-        # HACKATHON: implement E*df/dv term
+        # electrostatic acceleration term
+        f_bc_v = self.apply_bcs(f, bcs, 'v')
 
-        # HACKATHON: implement BGK collision term
+        E = jnp.expand_dims(E, axis=1)
+        fac = self.plasma.omega_c_tau * Z / A
+        F = lambda left, right: jnp.where(fac * E > 0, left * fac * E, right * fac * E)
+        Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', F, grid.dv, axis=1)
+
+        n = zeroth_moment(f, grid)
+        M = maxwellian(grid, A, n)
+        nu = nu * self.collision_frequency_shape_func().flatten()
+    
+        BGK = nu[:, None] * (n[:, None] * M[None, :] - f)
+
 
         return -vdfdx
 
