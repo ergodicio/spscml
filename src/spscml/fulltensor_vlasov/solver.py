@@ -131,7 +131,7 @@ class Solver(eqx.Module):
                                               grid.dv,
                                               axis=1)
         n = self.plasma.Ze * zeroth_moment(f,grid) 
-        nu = nu * jmp.ones(n.shape)
+        nu = nu * jnp.ones(n.shape)
     
        # HACKATHON: implement BGK collision term
         T = 1
