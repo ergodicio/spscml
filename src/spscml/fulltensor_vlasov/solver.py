@@ -138,7 +138,7 @@ class Solver(eqx.Module):
         M = maxwellian_1d(A,n,nu,T)
         
      
-        col = (n[:,None]*M[:,None]-f)
+        col = (n[:,None]*M[None,:]-f)
         return -vdfdx - Edfdv + col
 
 
