@@ -135,7 +135,8 @@ class Solver(eqx.Module):
        
        # HACKATHON: implement BGK collision term
         T = 1
-        print(A.shape)
+        print(A)
+        print(grid.vs)
         input()
         
         #M = maxwellian_1d_v2(A,n,nu,T,grid.vs)
