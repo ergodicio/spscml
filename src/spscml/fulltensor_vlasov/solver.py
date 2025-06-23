@@ -13,7 +13,7 @@ from ..grids import PhaseSpaceGrid
 from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
-from ..utils import zeroth_moment, first_moment, second_moment
+from ..utils import zeroth_moment, first_moment, second_moment, maxwellian_1d
 from ..collisions_and_sources import flux_source_shape_func
 
 class Solver(eqx.Module):
@@ -130,8 +130,14 @@ class Solver(eqx.Module):
         Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', F, 
                                               grid.dv,
                                               axis=1)
+        n = self.plasma.Ze * zeroth_moment(f,grid) 
        # HACKATHON: implement BGK collision term
-        return -vdfdx-Edfdv
+        T = 1
+        M = maxwellian_1d(A,n,nu,T)
+        
+     
+        col = nu * (M-f)
+        return -vdfdx - Edfdv + col
 
 
     def apply_bcs(self, f, bcs, dim):
