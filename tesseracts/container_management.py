@@ -2,7 +2,7 @@ import boto3
 import uuid
 
 
-def create_or_update_tesseract_service(tesseract_name):
+def create_or_update_tesseract_service(tesseract_name, needs_gpu=True):
     # Create a Boto3 session
     session = boto3.Session()
 
@@ -16,10 +16,8 @@ def create_or_update_tesseract_service(tesseract_name):
 
     # check if service exists
     service_found = False
-    services = ecs_client.list_services(cluster=cluster)
-    print(f"list of all services: {services}")
+    services = ecs_client.list_services(cluster=cluster, maxResults=100)
     for service in services["serviceArns"]:
-        print(f"checking service {service}")
         if tesseract_name in service:
             this_service = service
             service_found = True
@@ -42,7 +40,7 @@ def create_or_update_tesseract_service(tesseract_name):
                 "awslogs-stream-prefix": "ecs",
             },
         },
-        "resourceRequirements": [{"type": "GPU", "value": "1"}],
+        "resourceRequirements": [{"type": "GPU", "value": "1"}] if needs_gpu else [],
         "entryPoint": ["tesseract-runtime"],
         "command": ["serve", "--host", "0.0.0.0"],
     }
@@ -133,8 +131,14 @@ if __name__ == "__main__":
         required=True,
         help="The name of the tesseract to update",
     )
+    parser.add_argument(
+        "--no-gpu",
+        action="store_true",
+        help="Deploy without GPU resources",
+    )
 
     args = parser.parse_args()
     tesseract_name = args.tesseract
+    needs_gpu = not args.no_gpu
 
-    print(create_or_update_tesseract_service(tesseract_name))
+    print(create_or_update_tesseract_service(tesseract_name, needs_gpu))

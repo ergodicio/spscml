@@ -11,9 +11,9 @@ jobs:
     strategy:
       matrix:
         tesseract: 
-          - { name: tanh_sheath, path: tesseracts/sheaths/tanh_sheath }
-          - { name: vlasov_sheath, path: tesseracts/sheaths/vlasov }
-          - { name: wdm, path: tesseracts/wdm }
+          - { name: tanh_sheath, path: tesseracts/sheaths/tanh_sheath, needs_gpu: false }
+          - { name: vlasov_sheath, path: tesseracts/sheaths/vlasov, needs_gpu: true }
+          - { name: wdm, path: tesseracts/wdm, needs_gpu: false }
     steps:
       - uses: actions/checkout@v4
 
@@ -81,4 +81,8 @@ jobs:
         run: |
           USER_TESSERACT_NAME="${{ env.USERNAME }}-${TESSERACT_NAME}"
           pip install boto3
-          python tesseracts/container_management.py --tesseract $USER_TESSERACT_NAME
+          if [[ "${{ matrix.tesseract.needs_gpu }}" == "false" ]]; then
+            python tesseracts/container_management.py --tesseract $USER_TESSERACT_NAME --no-gpu
+          else
+            python tesseracts/container_management.py --tesseract $USER_TESSERACT_NAME
+          fi
