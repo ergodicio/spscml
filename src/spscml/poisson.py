@@ -47,7 +47,6 @@ def poisson_solve(grid, plasma, rho_c, boundary_conditions):
 
         if left_bc_type == 'Dirichlet' and right_bc_type == 'Dirichlet':
             L = grid.laplacian
-            #phi = jnp.linalg.solve(L, rhs)
             dl, d, du = grid.laplacian_diagonals
             phi = jax.lax.linalg.tridiagonal_solve(dl, d, du, rhs[:, None]).flatten()
             phi = jnp.concatenate([

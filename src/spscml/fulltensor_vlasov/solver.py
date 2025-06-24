@@ -14,7 +14,7 @@ from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
 from ..utils import zeroth_moment, first_moment, second_moment
-from ..collisions_and_sources import flux_source_shape_func
+from ..collisions_and_sources import flux_source_shape_func, maxwellian
 
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
@@ -81,7 +81,9 @@ class Solver(eqx.Module):
         fi = fs['ion']
         # HACKATHON: Solve poisson equation for E
         # See poisson.py -- poisson_solve()
-        E = jnp.zeros(self.grids['x'].Nx)
+        rho_c = self.plasma.Zi * zeroth_moment(fi, self.grids['ion']) + self.plasma.Ze * zeroth_moment(fe, self.grids['electron']) 
+        E = poisson_solve(self.grids['x'], self.plasma, rho_c, boundary_conditions)
+        # E = jnp.zeros(self.grids['x'].Nx)
         
         electron_rhs = self.vlasov_fp_single_species_rhs(fe, E, self.plasma.Ae, self.plasma.Ze, 
                                                          self.grids['electron'],
@@ -120,10 +122,19 @@ class Solver(eqx.Module):
                                               axis=0)
 
         # HACKATHON: implement E*df/dv term
+        f_bc_v = self.apply_bcs(f, bcs, 'v')
+        E = jnp.expand_dims(E, axis=1)
+        E_term = self.plasma.omega_c_tau * Z * E /A
+        F_1 = lambda left, right: jnp.where(E_term > 0, left * E_term, right * E_term)
+        Edfdx = slope_limited_flux_divergence(f_bc_v, 'minmod', F_1, 
+                                              grid.dv,
+                                              axis=1)
+
 
         # HACKATHON: implement BGK collision term
+        Q = nu * ( maxwellian(grid, A, zeroth_moment(f, grid), T=1.0) - f)
 
-        return -vdfdx
+        return -vdfdx - Edfdx + Q
 
 
     def apply_bcs(self, f, bcs, dim):
@@ -143,7 +154,7 @@ class Solver(eqx.Module):
         elif axis == 1:
             if bc == 'periodic':
                 left = f[:, -2:]
-                right = r[:, :2]
+                right = f[:, :2]
             else:
                 left = bc['left'](f[:, 0:2])
                 right = bc['right'](f[:, -2:])
