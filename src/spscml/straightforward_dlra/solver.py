@@ -433,8 +433,8 @@ class Solver(eqx.Module):
         L_bcs = jnp.pad(L,[(0,0),(2,2)], mode='empty')
         E_flux_func = lambda left, right: E_plus_matrix @ left + E_minus_matrix @ right
         E_flux = slope_limited_flux(L_bcs, SCHEME, E_flux_func, grid.dv, axis=1)
-        print('E_plus_matrix',E_flux.shape)
-        print('E_minus_matrix',E_flux.shape)
+        print('X',X.shape)
+        print('E',E.shape)
         input()
         # HACKATHON: add collision terms and flux source terms here
 
