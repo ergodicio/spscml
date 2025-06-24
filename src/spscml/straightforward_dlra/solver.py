@@ -421,6 +421,8 @@ class Solver(eqx.Module):
         # 2. Apply zero Dirichlet boundaries to L
         # 3. Compute the flux divergence using the slope_limited_flux_divergence function
         
+        fac = self.plasma.omega_c_tau * args['Z'] / args['A']
+
         L_diff_left = jnp.diff(L[:, :-1], axis=1) / grid.dx
         L_diff_right = jnp.diff(L[:, 1:], axis=1) / grid.dx
         E_plus_matrix = X @ jnp.diag(jnp.where(fac*E > 0, fac*E, 0.0)) @ X.T * grid.dx
