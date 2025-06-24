@@ -448,7 +448,7 @@ class Solver(eqx.Module):
         x_nu_matrix= X @ jnp.diag(nu*jnp.ones(grid.Nx)) @ X.T * grid.dx
         M = self.maxwellian(A,grid,n)
        
-        collision_term =  (X @ (n*nu + gamma) * grid.dx)[:,None] * M[None,:] - x_nu_matrix[:,None] * L
+        collision_term =  (X @ (n*nu + gamma) * grid.dx)[:,None] * M[None,:] - x_nu_matrix @ L
 
         return -v_flux - E_flux + collision_term 
 
