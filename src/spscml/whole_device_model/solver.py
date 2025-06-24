@@ -105,7 +105,23 @@ class Solver():
         # You'll need to implement:
         # - A residual function that accepts a guess [Q, V]^n+1 and returns the error in the implicit step
         # - A call to optx.root_find that performs the Newton solve with self.rootfinder
-        raise NotImplementedError("HACKATHON: implement Implicit Euler step")
+
+        def residual(QV, args):
+            Q, V = QV
+            L_term = (self.Lp/ (self.L - self.Lp))
+            I = sheath_solve(V, T, n)
+            V_Rp = V + L_term * (Q / self.C + self.R * I) / (1 + L_term)
+            return jnp.array([Q - y[0] - dt * I,
+                        - I + y[1] + (dt * (-Q/self.C - self.R * I + V_Rp)/(self.L - self.Lp)) ])
+
+        sol = optx.root_find(residual, self.rootfinder, jnp.array([y[0], Vp]))
+
+        Q_new, V_new = sol.value
+        I_new = sheath_solve(V_new, T, n)
+
+        return jnp.array([Q_new, I_new]), V_new
+
+        # raise NotImplementedError("HACKATHON: implement Implicit Euler step")
 
 
     def log_progress(self, t, y, Vp):
