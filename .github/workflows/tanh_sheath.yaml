@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - jack-deploys
+      - np-gpu-wdm-tanh
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -37,10 +38,6 @@ jobs:
           ECR_REPOSITORY: hackathon
           IMAGE_TAG: tanh_sheath
         run: |
-          # Use GPU config and requirements
-          cp tesseracts/sheaths/tanh_sheath/tesseract_config.yaml tesseracts/sheaths/tanh_sheath/tesseract_config.yaml
-          cp tesseracts/sheaths/tanh_sheath/tesseract_requirements.txt tesseracts/sheaths/tanh_sheath/tesseract_requirements.txt
-          
           # Write custom build steps to tesseract config
           cat << 'EOF' >> tesseracts/sheaths/tanh_sheath/tesseract_config.yaml
           EOF

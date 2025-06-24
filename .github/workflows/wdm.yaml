@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - jack-deploys
+      - np-gpu-wdm-tanh
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -37,10 +38,6 @@ jobs:
           ECR_REPOSITORY: hackathon
           IMAGE_TAG: wdm
         run: |
-          # Use GPU config and requirements
-          cp tesseracts/wdm/tesseract_config.yaml tesseracts/wdm/tesseract_config.yaml
-          cp tesseracts/wdm/tesseract_requirements.txt tesseracts/wdm/tesseract_requirements.txt
-          
           # Write custom build steps to tesseract config
           cat << 'EOF' >> tesseracts/wdm/tesseract_config.yaml
           EOF
