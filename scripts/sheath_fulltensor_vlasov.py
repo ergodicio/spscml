@@ -75,7 +75,11 @@ solver = Solver(plasma,
                 flux_source_enabled=True,
                 nu_ee=nu*5, nu_ii=nu)
 
-solve = jax.jit(lambda: solver.solve(0.01/50, 12000, initial_conditions, boundary_conditions, 0.1))
+
+CFL = 0.5
+dt = CFL * x_grid.dx / (6*electron_grid.vmax)
+
+solve = jax.jit(lambda: solver.solve(dt, 10000, initial_conditions, boundary_conditions, 0.1))
 result = solve()
 
 fe = result['electron']

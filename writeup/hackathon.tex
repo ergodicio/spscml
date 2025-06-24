@@ -288,11 +288,11 @@ the ``flexible plasma normalization'' \cite{millerMultispecies13momentModel2016}
 The collision operator $Q$ is a linearized version of the BGK collision operator about an equilibrium
 distribution with temperature $T_{0}$ and velocity $u = 0$:
 \begin{align*}
-    Q(f_s) &= \nu_s(x) (M_s(v) - f_s),
+    Q(f_s) &= \nu_s(x) (n(x) M_s(v) - f_s),
 \end{align*}
 where
 \begin{align*}
-    M_s(v) = \frac{n_s(x)}{(2\pi T_0/A_s)^{1/2}} \exp \left( -\frac{A_s|v|^2}{2T_0} \right).
+    M_s(v) = \frac{1}{(2\pi T_0/A_s)^{1/2}} \exp \left( -\frac{A_s|v|^2}{2T_0} \right).
 \end{align*}
 The collision frequency $\nu_s(x)$ is spatially dependent, since we apply an increased collision frequency in the center of the domain
 in order to simulate equilibration with the bulk plasma.
@@ -375,21 +375,21 @@ of boundary conditions in the low-rank framework, see \cite{huAdaptiveDynamicalL
 \begin{align*}
     \partial_t K_j &= -\sum_{l=1}^r \left\langle V_j, v^+ V_l \right\rangle_v D_+ K_l(x, t) - \sum_{l=1}^r \left\langle V_j, v^- V_l \right\rangle_v D_- K_l(x, t)  \\
                          &\quad - (\omega_c \tau) \frac{Z}{A} \left[ \sum_{l=1}^r \left\langle V_j, D_+ V_l \right\rangle_v E_+ K_l(x, t) + \sum_{l=1}^r \left\langle V_j, D_- V_l \right\rangle_v E_- K_l(x, t) \right] \\
-                         &\quad + (\nu(x) + \gamma(x)) \left\langle V_j, M \right\rangle_v - \sum_{l=1}^r \nu(x)  \left\langle V_j, V_l \right\rangle_v K_l(x, t)
+                         &\quad + (n(x) \nu(x) + \gamma(x)) \left\langle V_j, M \right\rangle_v - \sum_{l=1}^r \nu(x)  \left\langle V_j, V_l \right\rangle_v K_l(x, t)
 \end{align*}
 
 \textbf{S step:}
 \begin{align*}
     \partial_t S_{ij} &= \sum_{l=1}^r \left\langle V_j, v^+ V_l \right\rangle_v \left\langle X_i, D_+ K_l \right\rangle_x + \sum_{l=1}^r \left\langle V_j, v^- V_l \right\rangle_v \left\langle X_i, D_- K_l \right\rangle_x \\
                       &\quad + (\omega_c \tau) \frac{Z}{A} \left[ \sum_{k,l=1}^r \left\langle V_j, D_+ V_l \right\rangle_v \left\langle X_i, E_+ X_k \right\rangle_x S_{kl} + \sum_{k,l=1}^r \left\langle V_j, D_- V_l \right\rangle_v \left\langle X_i, E_- X_k \right\rangle_x S_{kl} \right] \\
-                      &\quad - \left\langle X_i, \nu(x) +\gamma(x) \right\rangle_x \left\langle V_j, M \right\rangle_v + \sum_{k,l=1}^r \left\langle X_i, \nu(x) X_k \right\rangle_x \left\langle V_j, V_l \right\rangle_v  S_{kl}
+                      &\quad - \left\langle X_i, n(x) \nu(x) +\gamma(x) \right\rangle_x \left\langle V_j, M \right\rangle_v + \sum_{k,l=1}^r \left\langle X_i, \nu(x) X_k \right\rangle_x \left\langle V_j, V_l \right\rangle_v  S_{kl}
 \end{align*}
 
 \textbf{L step:}
 \begin{align*}
     \partial_t L_i &= -\sum_{l=1}^r v^+ V_l \left\langle X_i, D_+ K_l \right\rangle_x - \sum_{l=1}^r v^- V_l \left\langle X_i, D_- K_l \right\rangle_x \\
                    &\quad - (\omega_c \tau) \frac{Z}{A} \left[ \sum_{k=1}^r \left\langle X_i, E_+ X_k \right\rangle_x D_+ L_k + \sum_{k=1}^r \left\langle X_i, E_- X_k \right\rangle_x D_- L_k  \right] \\
-                   &\quad + \left\langle X_i, \nu(x) + \gamma(x) \right\rangle_x M - \sum_{k=1}^r \left\langle X_i, \nu(x) X_k \right\rangle L_k
+                   &\quad + \left\langle X_i, n(x) \nu(x) + \gamma(x) \right\rangle_x M - \sum_{k=1}^r \left\langle X_i, \nu(x) X_k \right\rangle L_k
 \end{align*}
 
 

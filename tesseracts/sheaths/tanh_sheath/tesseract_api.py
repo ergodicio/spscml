@@ -27,7 +27,7 @@ def apply(inputs: InputSchema) -> OutputSchema:
     return apply_jit(inputs.model_dump())
 
 
-@jax.jit
+@eqx.filter_jit
 def apply_jit(inputs: dict) -> dict:
     Vp = inputs["Vp"] * ureg.V
     T = inputs["T"] * ureg.eV
