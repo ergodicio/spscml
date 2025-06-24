@@ -116,17 +116,17 @@ This may be solved by finding the root of the residual function
 =
 \begin{bmatrix}
     Q^{n+1} - Q^n - \Delta t I_p^{n+1} \\
-    -I_p^{n+1} + \dot{Q}^n + \frac{\Delta t}{L - L_p} \left( -Q^{n+1}/C - R I_p^{n+1} - V_{Rp}^{n+1} \right) 
+    -I_p^{n+1} + \dot{Q}^n + \frac{\Delta t}{L - L_p} \left( -Q^{n+1}/C - R I_p^{n+1} + V_{Rp}^{n+1} \right) 
 \end{bmatrix},
 \end{align*}
 where $I_p^{n+1} = I_p(V_p^{n+1})$, and the resistive component of the plasma voltage must be solved for:
 \begin{align*}
     V_{Rp}^{n+1} &= V_p^{n+1} - L_p \ddot{Q} \\
-                 &= V_p^{n+1} - \frac{L_p}{L - L_p} \left( -\frac{Q^{n+1}}{C} - R I_p^{n+1} - V_{Rp}^{n+1} \right),
+                 &= V_p^{n+1} - \frac{L_p}{L - L_p} \left( -\frac{Q^{n+1}}{C} - R I_p^{n+1} + V_{Rp}^{n+1} \right),
 \end{align*}
 giving
 \begin{align*}
-    V_{Rp}^{n+1} = \left( 1 - \frac{L_p}{L - L_p} \right)^{-1} \left( V_p^{n+1} - \frac{L_p}{L - L_p} \left( -\frac{Q^{n+1}}{C} - R I_p^{n+1} \right) \right).
+    V_{Rp}^{n+1} = \left( 1 + \frac{L_p}{L - L_p} \right)^{-1} \left( V_p^{n+1} - \frac{L_p}{L - L_p} \left( -\frac{Q^{n+1}}{C} - R I_p^{n+1} \right) \right).
 \end{align*}
 
 The root of the residual $\mathcal{R}$ can be found by a Newton iteration.
