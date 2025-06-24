@@ -441,8 +441,16 @@ class Solver(eqx.Module):
         # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
+        
+        n = (X.T @ S @ zeroth_moment(V,grid)).T
+        nu = args['nu']
+        gamma = self.flux_source_shape_fun()* args['flux_out']
+        x_nu_matrix= X @ jnp.diag(nu*jnp.ones(grid.Nx)) @ X.T * grid.dx
+        
+       
+        collision_term =  (X @ (n*nu + gamma) * grid.dx)[:,None] * M [None,:] - x_nu_matrix[:,None] * L
 
-        return -v_flux - E_flux
+        return -v_flux - E_flux + collision_term 
 
 
     def ion_flux_out(self, ys):
