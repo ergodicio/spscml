@@ -329,7 +329,7 @@ class Solver(eqx.Module):
         E_flux = (E_plus_matrix @ S @ V_left_matrix.T) + (E_minus_matrix @ S @ V_right_matrix.T )
         n = (K.T @ zeroth_moment(V,grid)).T
         M = self.maxwellian(A,grid,n)
-        nu = arg['nu']
+        nu = args['nu']
         gamma = self.flux_source_shape_fun()* arg['flux_out']
         VM = V @ M * grids.dv
         x_nu_matrix= X @ jnp.diag(nu) @ X.T .grid.dx
