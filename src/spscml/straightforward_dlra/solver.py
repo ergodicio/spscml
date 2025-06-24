@@ -11,6 +11,7 @@ from ..muscl import slope_limited_flux, slope_limited_flux_divergence
 from ..poisson import poisson_solve
 from ..collisions_and_sources import collision_frequency_shape_func, flux_source_shape_func, maxwellian
 from .poisson import solve_poisson_KV, solve_poisson_XSV, solve_poisson_XL
+from ..utils import zeroth_moment
 
 SPECIES = ['electron', 'ion']
 
@@ -77,6 +78,9 @@ class Solver(eqx.Module):
         self.nus = {'electron': nu_ee, 'ion': nu_ii}
 
 
+
+
+    
     def solve(self, dt, Nt, initial_conditions, boundary_conditions, dtmax):
         """
         Solve the Vlasov-BGK equation using the DLRA method.
@@ -151,8 +155,10 @@ class Solver(eqx.Module):
 
         def step_Ks_with_E_RHS(Ks):
             # HACKATHON: E = ...
+            V = args['V']
+            E = self. solve_poisson_KV(Ks,ys,self.grids,args['bcs'],self.plasma)
             return { sp: self.K_step_single_species_RHS(Ks[sp], self.grids[sp], 
-                                                                 {**args_of(sp)})
+                                                                 {**args_of(sp),'E':E})
                     for sp in SPECIES }
 
 
@@ -185,18 +191,34 @@ class Solver(eqx.Module):
 
         v_plus_matrix = V @ jnp.diag(jnp.where(v > 0, v, 0.0)) @ V.T * grid.dv
         v_minus_matrix = V @ jnp.diag(jnp.where(v < 0, v, 0.0)) @ V.T * grid.dv
+        V_left_matrix = V @ jnp.concatenate([jnp.zeros((r, 1)), jnp.diff(V, axis=1) / grid.dv], axis=1).T * grid.dv
+        V_right_matrix = V @ jnp.concatenate([jnp.diff(V, axis=1) / grid.dv, jnp.zeros((r, 1))], axis=1).T * grid.dv
 
+      
+        
         K_bcs = self.apply_K_bcs(K, V, grid, n_ghost_cells=2)
         v_flux_func = lambda left, right: v_plus_matrix @ left + v_minus_matrix @ right
         v_flux = slope_limited_flux(K_bcs, SCHEME, v_flux_func, grid.dx, axis=1)
-
+        
         v_flux_diff = jnp.diff(v_flux, axis=1) / grid.dx
 
         # HACKATHON: add E*df/dv term here
+        
         # You'll need to implement:
         # 1. Compute upwinded E arrays based on sign of Z/A * E
         # 2. Compute upwind dV/dv matrices <V, D^\pm V>
         # 3. Compute the projected E*df/dv flux term
+        E = args['E']
+        Z = args['Z']
+        A = args['A']
+        fac = self.plasma.omega_c_tau * args['Z'] / args['A']
+        E_plus = jnp.atleast_2d(jnp.where(fac*E > 0, fac*E, 0.0))
+        E_minus = jnp.atleast_2d(jnp.where(fac*E < 0, fac*E, 0.0))
+        E_flux = (V_left_matrix @ (K * E_plus) + V_right_matrix @ (K * E_minus))
+        
+
+       # E_plus_matrix = jnp.diag(jnp.where(Z/A * E > 0, Z/A * E, 0.0))
+       # E_minus_matrix = jnp.diag(jnp.where(Z/A * E < 0, Z/A * E , 0.0)) 
 
         # HACKATHON: add collision terms and flux source terms here
         # You'll need to implement:
@@ -205,7 +227,7 @@ class Solver(eqx.Module):
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func, flux_source_shape_func, and maxwellian in collisions_and_sources.py
 
-        return -v_flux_diff
+        return -v_flux_diff - E_flux 
 
 
     def step_S(self, t, ys, args):
