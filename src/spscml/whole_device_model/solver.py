@@ -50,7 +50,6 @@ class Solver():
                 and returns the plasma current in amperes
         '''
 
-        @jax.jit
         def scanner(carry, ys):
             y, Vp, t = carry
             jax.debug.print("t = {}", t)
@@ -101,11 +100,29 @@ class Solver():
             V The plasma gap voltage at time t^n+1
         '''
 
-        # HACKATHON: implement this function!
-        # You'll need to implement:
-        # - A residual function that accepts a guess [Q, V]^n+1 and returns the error in the implicit step
-        # - A call to optx.root_find that performs the Newton solve with self.rootfinder
-        raise NotImplementedError("HACKATHON: implement Implicit Euler step")
+        Qn, Qdotn = y
+
+        def residual_helper(y, Ip):
+            Qnext, Vpnext = y
+            factor = self.Lp / (self.L - self.Lp)
+            V_Rp = (1 - factor) * (Vpnext - factor * (-Qnext / self.C - self.R * Ip))
+            r = jnp.array([
+                Qnext - Qn - dt * Ip,
+                -Ip + Qdotn + dt/(self.L - self.Lp) * (-Qnext/self.C - self.R*Ip + V_Rp)
+                ])
+            return r
+
+        def residual(y, args):
+            Qnext, Vpnext = y
+            Ip = sheath_solve(Vpnext, T, n)
+            return residual_helper(y, Ip)
+
+
+        guess = jnp.array([Qn, Vp])
+
+        Q, V = optx.root_find(residual, self.rootfinder, guess, max_steps=5, throw=False).value
+        Ip = sheath_solve(V, T, n)
+        return jnp.array([Q, Ip]), V
 
 
     def log_progress(self, t, y, Vp):
