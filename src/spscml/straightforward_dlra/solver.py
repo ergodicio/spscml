@@ -170,7 +170,20 @@ class Solver(eqx.Module):
             return (Xt.T / grid.dx**0.5, S * grid.dx**0.5, V)
 
         return { sp: XSV_of(Ks[sp], ys[sp], self.grids[sp]) for sp in SPECIES }
+        
+    def maxwellian(self,A,grid,n):
+        v = grid.vs
+        T = 1.0
+        
+        theta = T/A
+        
+        M = n / jnp.sqrt(2*jnp.pi * theta) * jnp.exp(-v**2 / (2*theta))
+        return M
 
+    def flux_source_shape_fun(self):
+        Ls = self.grids['x'].Lx
+        return (1/Ls - jnp.abs(self.grids['x'].xs)/Ls**2)
+        
 
     def K_step_single_species_RHS(self, K, grid, args):
         """
@@ -226,8 +239,14 @@ class Solver(eqx.Module):
         # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func, flux_source_shape_func, and maxwellian in collisions_and_sources.py
+        n = (K.T @ zeroth_moment(V,grid)).T
+        M = self.maxwellian(A,grid,n)
+        nu = arg['nu']
+        gamma = self.flux_source_shape_fun()* arg['flux_out']
+        VM = V @ M * grids.dv
+        collision_term = (nu + gamma)[None,:] *VM [:,None] - K * nu
 
-        return -v_flux_diff - E_flux 
+        return -v_flux_diff - E_flux + collision_term
 
 
     def step_S(self, t, ys, args):
