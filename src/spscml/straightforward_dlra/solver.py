@@ -397,6 +397,8 @@ class Solver(eqx.Module):
             Time derivative of L matrix
         """
         X = args['X']
+        E = args['E']
+
         v = grid.vs
         r = self.r
 
