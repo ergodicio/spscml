@@ -241,7 +241,7 @@ class Solver(eqx.Module):
         # See collision_frequency_shape_func, flux_source_shape_func, and maxwellian in collisions_and_sources.py
         n = (K.T @ zeroth_moment(V,grid)).T
         M = self.maxwellian(A,grid,n)
-        nu = arg['nu']
+        nu = args['nu']
         gamma = self.flux_source_shape_fun()* arg['flux_out']
         VM = V @ M * grids.dv
         collision_term = (n*nu + gamma)[None,:] *VM [:,None] - K * nu
