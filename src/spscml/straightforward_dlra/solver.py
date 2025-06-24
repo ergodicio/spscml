@@ -450,7 +450,7 @@ class Solver(eqx.Module):
        
         collision_term =  (X @ (n*nu + gamma) * grid.dx)[:,None] * M[None,:] - x_nu_matrix @ L
 
-        return -v_flux - E_flux + collision_term 
+        return -v_flux - E_flux #+ collision_term 
 
 
     def ion_flux_out(self, ys):
