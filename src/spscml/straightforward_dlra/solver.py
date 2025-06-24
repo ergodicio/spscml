@@ -326,7 +326,7 @@ class Solver(eqx.Module):
         V_right_matrix = V @ jnp.concatenate([jnp.diff(V, axis=1) / grid.dv, jnp.zeros((r, 1))], axis=1).T * grid.dv
 
     
-        E_flux = ((V_left_matrix @ E_plus_matrix) @ S + (V_right_matrix @ E_minus_matrix) @ S
+        E_flux = (E_plus_matrix @ S @ V_left_matrix.T) + (E_minus_matrix @ S @ V_right_matrix.T )
      
 
 
