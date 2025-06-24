@@ -11,6 +11,7 @@ from tesseract_core import Tesseract
 from tesseract_jax import apply_tesseract
 import wdm.tesseract_api as tesseract_api
 import sheaths.tanh_sheath.tesseract_api as tanh_sheath_tesseract_api
+import sheaths.vlasov.tesseract_api as vlasov_sheath_tesseract_api
 import jpu
 import equinox as eqx
 import mlflow
@@ -28,7 +29,7 @@ def parse_args():
     Vc0 = 40*1e3  # 40kV
     T = 20.0      # 20 eV
     Vp = 500.0    # 500 V
-    image = "tanh_sheath"  # Default tesseract image
+    tesseract = "tanh_sheath"  # Default tesseract image
     
     # Parse arguments
     i = 0
@@ -42,31 +43,31 @@ def parse_args():
         elif args[i] == '--Vp' and i + 1 < len(args):
             Vp = float(args[i + 1])
             i += 2
-        elif args[i] == '--image' and i + 1 < len(args):
-            image = args[i + 1]
+        elif args[i] == '--tesseract' and i + 1 < len(args):
+            tesseract = args[i + 1]
             i += 2
         elif args[i] == '--help' or args[i] == '-h':
             print("Usage: python run_wdm.py [--Vc0 VALUE] [--T VALUE] [--Vp VALUE] [--image NAME]")
             print("  --Vc0 VALUE   Total capacitor voltage in volts (default: 40000)")
             print("  --T VALUE     Initial temperature in eV (default: 20.0)")
             print("  --Vp VALUE    Initial plasma voltage in volts (default: 500.0)")
-            print("  --image NAME  Tesseract image name (default: vlasov_sheath)")
+            print("  --tesseract NAME  Tesseract name (default: tanh_sheath)")
             print("  --help, -h    Show this help message")
             sys.exit(0)
         else:
             print(f"Unknown argument: {args[i]}")
             print("Use --help for usage information")
             sys.exit(1)
-            
-    return Vc0, T, Vp, image
+        
+    return Vc0, T, Vp, tesseract
 
-Vc0, T_input, Vp_input, image_name = parse_args()
+Vc0, T_input, Vp_input, tesseract_name = parse_args()
 
 print(f"Running WDM simulation with:")
 print(f"  Vc0 = {Vc0} V")
 print(f"  T = {T_input} eV") 
 print(f"  Vp = {Vp_input} V")
-print(f"  Tesseract image = {image_name}")
+print(f"  Tesseract = {tesseract_name}")
 
 R = 1.5e-3
 L = 2.0e-7
@@ -83,7 +84,12 @@ n0 = 6e22 * ureg.m**-3
 Z = 1.0
 
 
-with Tesseract.from_tesseract_api(tanh_sheath_tesseract_api) as sheath_tx:
+if tesseract_name == "tanh_sheath":
+    tesseract_api = tanh_sheath_tesseract_api
+elif tesseract_name == "vlasov_sheath":
+    tesseract_api = vlasov_sheath_tesseract_api
+
+with Tesseract.from_tesseract_api(tesseract_api) as sheath_tx:
     Vp0 = Vp_input * ureg.volts
 
     T0 = T_input * ureg.eV
