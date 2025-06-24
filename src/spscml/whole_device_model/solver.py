@@ -60,6 +60,7 @@ class Solver():
             Q_I = jnp.array([Q, I])
             Q_I_new, Vnew = self.implicit_euler_step(Q_I, Vp, T, n, dt, sheath_solve)
             I_new = Q_I_new[1]
+
             T_prime = self.step_heating_and_cooling(I_new, T, n, dt)
 
             # Adiabatic compression or expansion: T_new is determined only from the change in
