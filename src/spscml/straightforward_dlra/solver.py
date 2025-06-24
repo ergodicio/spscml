@@ -269,7 +269,7 @@ class Solver(eqx.Module):
 
         def step_Ss_with_E_RHS(Ss):
             # HACKATHON: E = ...
-            E = self. solve_poisson_XSV(Ss,ys,self.grids,args['bcs'],self.plasma)
+            E = solve_poisson_XSV(Ss,ys,self.grids,args['bcs'],self.plasma)
             return { sp: self.S_step_single_species_RHS(Ss[sp], self.grids[sp], 
                                                                  {**args_of(sp),'E':E})
                     for sp in SPECIES }
@@ -365,7 +365,7 @@ class Solver(eqx.Module):
 
         def step_Ls_with_E_RHS(Ls):
             # HACKATHON: E = ...
-            E = self. solve_poisson_XL(Ls,ys,self.grids,args['bcs'],self.plasma)
+            E = solve_poisson_XL(Ls,ys,self.grids,args['bcs'],self.plasma)
             return { sp: self.L_step_single_species_RHS(Ls[sp], self.grids[sp], 
                                                                  {**args_of(sp),'E':E})
                     for sp in SPECIES }
