@@ -398,7 +398,7 @@ class Solver(eqx.Module):
         """
         X = args['X']
         E = args['E']
-
+        A = args['A']
         v = grid.vs
         r = self.r
 
