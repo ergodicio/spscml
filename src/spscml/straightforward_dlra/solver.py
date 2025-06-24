@@ -332,7 +332,7 @@ class Solver(eqx.Module):
         nu = args['nu']
         gamma = self.flux_source_shape_fun()* args['flux_out']
         VM = V @ M * grid.dv
-        x_nu_matrix= X @ jnp.diag(nu*jnp.ones(grid.Nx)) @ X.T .grid.dx
+        x_nu_matrix= X @ jnp.diag(nu*jnp.ones(grid.Nx)) @ X.T * grid.dx
         collision_term = -1.0 * (X @ (n*nu + gamma))[:,None] * VM [None,:] * grid.dx + x_nu_matrix @ S
 
 
