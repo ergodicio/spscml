@@ -330,7 +330,7 @@ class Solver(eqx.Module):
         n = (K.T @ zeroth_moment(V,grid)).T
         M = self.maxwellian(A,grid,n)
         nu = args['nu']
-        gamma = self.flux_source_shape_fun()* arg['flux_out']
+        gamma = self.flux_source_shape_fun()* args['flux_out']
         VM = V @ M * grids.dv
         x_nu_matrix= X @ jnp.diag(nu) @ X.T .grid.dx
         collision_term = -1.0 * (X @ (n*nu + gamma))[:,None] * VM [None,:] * grid.dx + x_nu_matrix @ S
