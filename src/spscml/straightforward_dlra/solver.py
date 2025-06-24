@@ -303,6 +303,8 @@ class Solver(eqx.Module):
         v_minus_matrix = V @ jnp.diag(jnp.where(v < 0, v, 0.0)) @ V.T * grid.dv
         
         K = self.apply_K_bcs((X.T @ S).T, V, grid, n_ghost_cells=1)
+        print('K:',K.shape)
+
         n = (K.T @ zeroth_moment(V,grid)).T
         K_diff_left = jnp.diff(K[:, :-1], axis=1) / grid.dx
         K_left_matrix = X @ K_diff_left.T * grid.dx
@@ -336,7 +338,6 @@ class Solver(eqx.Module):
         x_nu_matrix= X @ jnp.diag(nu*jnp.ones(grid.Nx)) @ X.T * grid.dx
         print('n:',n.shape)
         print('gamma:',gamma.shape)
-       
         input()
         collision_term = -1.0 * (X @ (n*nu + gamma))[:,None] * VM [None,:] * grid.dx + x_nu_matrix @ S
 
