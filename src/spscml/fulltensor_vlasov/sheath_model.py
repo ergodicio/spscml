@@ -15,7 +15,7 @@ Lz_LAMBDA_D = 256
 
 
 def make_plasma(norm):
-    return TwoSpeciesPlasma(norm["omega_p_tau"], norm["omega_c_tau"], norm["nu_p_tau"], 
+    return TwoSpeciesPlasma(norm["omega_p_tau"], norm["omega_c_tau"], norm["nu_p_tau"],
                             Ai=1.0, Ae=0.04, Zi=1.0, Ze=-1.0)
 
 
@@ -75,7 +75,7 @@ def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
     ion_grid = x_grid.extend_to_phase_space(6*vti, 128)
     electron_grid = x_grid.extend_to_phase_space(6*vte, 128)
 
-    initial_conditions = { 
+    initial_conditions = {
         'electron': lambda x, v: 1 / (jnp.sqrt(2*jnp.pi)*vte) * jnp.exp(-plasma.Ae*(v**2) / (2*Te)),
         'ion': lambda x, v: 1 / (jnp.sqrt(2*jnp.pi)*vti) * jnp.exp(-plasma.Ai*(v**2) / (2*Ti))
     }
@@ -107,14 +107,14 @@ def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
         adjoint_method = kwargs['adjoint_method']
     else:
         adjoint_method = None
-    solver = Solver(plasma, 
+    solver = Solver(plasma,
                     {'x': x_grid, 'electron': electron_grid, 'ion': ion_grid},
                     flux_source_enabled=True, nu_ee=nu_ee, nu_ii=nu_ii, adjoint_method=adjoint_method)
 
-    CFL = 0.5
+    CFL = 0.25
     dtmax = CFL * x_grid.dx / (6*vte)
 
-    solve = lambda: solver.solve(dtmax, 5000, initial_conditions, boundary_conditions, dtmax)
+    solve = lambda: solver.solve(dtmax, 10000, initial_conditions, boundary_conditions, dtmax)
     result = solve()
     je = -1 * first_moment(result['electron'], electron_grid)
     ji = 1 * first_moment(result['ion'], ion_grid)

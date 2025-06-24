@@ -13,8 +13,8 @@ from ..grids import PhaseSpaceGrid
 from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
-from ..utils import zeroth_moment, first_moment, second_moment
-from ..collisions_and_sources import flux_source_shape_func
+from ..utils import zeroth_moment, first_moment, second_moment, temperature
+from ..collisions_and_sources import flux_source_shape_func, maxwellian
 
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
@@ -28,11 +28,11 @@ class Solver(eqx.Module):
     Solves the Vlasov-BGK equation
     """
     def __init__(self,
-                 plasma: TwoSpeciesPlasma, 
+                 plasma: TwoSpeciesPlasma,
                  grids,
                  flux_source_enabled,
-                 nu_ee, 
-                 nu_ii, 
+                 nu_ee,
+                 nu_ii,
                  adjoint_method=None):
         self.plasma = plasma
         self.grids = grids
@@ -81,12 +81,16 @@ class Solver(eqx.Module):
         fi = fs['ion']
         # HACKATHON: Solve poisson equation for E
         # See poisson.py -- poisson_solve()
-        E = jnp.zeros(self.grids['x'].Nx)
-        
-        electron_rhs = self.vlasov_fp_single_species_rhs(fe, E, self.plasma.Ae, self.plasma.Ze, 
+        rho_c = (
+            self.plasma.Zi * zeroth_moment(fi, self.grids['ion'])
+            + self.plasma.Ze * zeroth_moment(fe, self.grids['electron'])
+        )
+        E = poisson_solve(self.grids['x'], self.plasma, rho_c, boundary_conditions)
+
+        electron_rhs = self.vlasov_fp_single_species_rhs(fe, E, self.plasma.Ae, self.plasma.Ze,
                                                          self.grids['electron'],
                                                          boundary_conditions['electron'], self.nu_ee)
-        ion_rhs = self.vlasov_fp_single_species_rhs(fi, E, self.plasma.Ai, self.plasma.Zi, 
+        ion_rhs = self.vlasov_fp_single_species_rhs(fi, E, self.plasma.Ai, self.plasma.Zi,
                                                          self.grids['ion'],
                                                          boundary_conditions['ion'], self.nu_ii)
 
@@ -112,18 +116,27 @@ class Solver(eqx.Module):
     def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs, nu):
         # free streaming term
         f_bc_x = self.apply_bcs(f, bcs, 'x')
+        f_bc_v = self.apply_bcs(f, bcs, 'v')
 
         v = jnp.expand_dims(grid.vs, axis=0)
         F = lambda left, right: jnp.where(v > 0, left * v, right * v)
-        vdfdx = slope_limited_flux_divergence(f_bc_x, 'minmod', F, 
+        vdfdx = slope_limited_flux_divergence(f_bc_x, 'minmod', F,
                                               grid.dx,
                                               axis=0)
 
-        # HACKATHON: implement E*df/dv term
+        Eflux = self.plasma.omega_c_tau*Z/A * jnp.expand_dims(E, axis=1)
+        G = lambda left, right: jnp.where(Eflux > 0, left * Eflux, right * Eflux)
+        Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', G,
+                                            grid.dv,
+                                            axis=1)
 
         # HACKATHON: implement BGK collision term
+        #T = temperature(f, A, grid)
+        ns = zeroth_moment(f, grid)
+        M = maxwellian(grid, A, ns)
 
-        return -vdfdx
+        Q = nu*(M - f)
+        return -vdfdx - Edfdv + Q
 
 
     def apply_bcs(self, f, bcs, dim):

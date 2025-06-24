@@ -19,13 +19,13 @@ uv run python
 
 ## Hackathon task list
 
-- [ ] Implement one of both of the Vlasov solvers for the sheath problem
-    - [ ] Full-tensor Vlasov
+- [x] Implement one of both of the Vlasov solvers for the sheath problem
+    - [x] Full-tensor Vlasov
     - [ ] Projector-splitting DLR
         - [ ] Works for the weak Landau damping test case
 - [ ] Check that your solver gives correct gradients for the (voltage -> current density) 
       mapping by comparing to finite difference estimates
-- [ ] Build the `tanh_sheath` tesseract:
+- [x] Build the `tanh_sheath` tesseract:
     ```
     uv run tesseract build tesseracts/sheaths/tanh_sheath
     ```

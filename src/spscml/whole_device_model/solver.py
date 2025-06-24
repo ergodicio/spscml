@@ -79,7 +79,6 @@ class Solver():
 
         return jax.lax.scan(scanner, (ics, 300.0, 0), jnp.arange(Nt))
 
-
     def implicit_euler_step(self, y, Vp, T, n, dt, sheath_solve):
         '''
         Perform a single implicit-Euler step of the RLC circuit equations
@@ -101,11 +100,34 @@ class Solver():
             V The plasma gap voltage at time t^n+1
         '''
 
+        Qn = y[0]
+        Qdotn = y[1]
+
+        def residual(x, args):
+            Q = x[0]
+            V = x[1]
+            Ip1 = sheath_solve(V, T, n)
+            Vr = (1 + self.Lp/(self.L - self.Lp))**(-1) * (V - self.Lp/(self.L - self.Lp)*(-Q/self.C - self.R*Ip1))
+            return jnp.array([
+                Q - Qn - dt*Ip1,
+                -Ip1 + Qdotn + dt/(self.L-self.Lp)*(-Q/self.C - self.R*Ip1 + Vr)
+            ])
+
+        root = optx.root_find(residual, self.rootfinder, jnp.array([Qn, Vp]), max_steps=5, throw=False,
+                              options={'lower': 1.0}).value
+
+        Qn1 = root[0]
+        V1 = root[1]
+
+        y1 = jnp.array([Qn1, sheath_solve(V1, T, n)])
+
+        return y1, V1
+
         # HACKATHON: implement this function!
         # You'll need to implement:
         # - A residual function that accepts a guess [Q, V]^n+1 and returns the error in the implicit step
         # - A call to optx.root_find that performs the Newton solve with self.rootfinder
-        raise NotImplementedError("HACKATHON: implement Implicit Euler step")
+        #raise NotImplementedError("HACKATHON: implement Implicit Euler step")
 
 
     def log_progress(self, t, y, Vp):

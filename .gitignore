@@ -18,3 +18,6 @@
 
 # MLFlow database
 mlruns
+
+# UV nonsense
+uv.lock
