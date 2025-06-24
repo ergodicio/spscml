@@ -489,9 +489,9 @@ class Solver(eqx.Module):
             elif n_ghost_cells == 2:
                 K_out_left = K[:,[0,1]]-2*(K[:,[1]]-K[:,[0]])
                 return jnp.concatenate([
-                    (V_leftgoing_matrix @ K_out_left,
+                    V_leftgoing_matrix @ K_out_left,
                     K,
-                    (V_rightgoing_matrix @ K[:,[-1, -1]],
+                    V_rightgoing_matrix @ K[:,[-1, -1]],
                 ], axis=1)
         elif self.boundary_type == 'Periodic':
             if n_ghost_cells == 1:
