@@ -244,7 +244,7 @@ class Solver(eqx.Module):
         nu = arg['nu']
         gamma = self.flux_source_shape_fun()* arg['flux_out']
         VM = V @ M * grids.dv
-        collision_term = (nu + gamma)[None,:] *VM [:,None] - K * nu
+        collision_term = (n*nu + gamma)[None,:] *VM [:,None] - K * nu
 
         return -v_flux_diff - E_flux + collision_term
 
@@ -327,7 +327,13 @@ class Solver(eqx.Module):
 
     
         E_flux = (E_plus_matrix @ S @ V_left_matrix.T) + (E_minus_matrix @ S @ V_right_matrix.T )
-     
+        n = (K.T @ zeroth_moment(V,grid)).T
+        M = self.maxwellian(A,grid,n)
+        nu = arg['nu']
+        gamma = self.flux_source_shape_fun()* arg['flux_out']
+        VM = V @ M * grids.dv
+        x_nu_matrix= X @ jnp.diag(nu) @ X.T .grid.dx
+        collision_term = -1.0 * (X @ (n*nu + gamma))[:,None] * VM [None,:] * grid.dx + x_nu_matrix @ S
 
 
         # HACKATHON: add collision terms and flux source terms here
@@ -337,7 +343,7 @@ class Solver(eqx.Module):
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
 
-        return v_term + E_flux
+        return v_term + E_flux + collision_term
 
 
     def step_L(self, t, ys, args):
