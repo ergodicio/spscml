@@ -100,12 +100,25 @@ class Solver():
             y: A 2-vector of [Q, Qdot=Ip] at time t^n+1
             V The plasma gap voltage at time t^n+1
         '''
+        
+        def residual(Qn1Vn1, args):
+            Qn1, Vn1 = Qn1Vn1
+            Qn = y[0]
+            In = y[1]
 
-        # HACKATHON: implement this function!
-        # You'll need to implement:
-        # - A residual function that accepts a guess [Q, V]^n+1 and returns the error in the implicit step
+            In1 = sheath_solve(Vn1, T, n)
+
+            Vrp1 = (Vn1 + self.Lp / (self.L + self.Lp) * (Qn1/self.C - self.R*In1)) / (1 - self.Lp / (self.L + self.Lp))
+            rhs = jnp.array([Qn1 - Qn - dt * In1,
+                            -In1 + In + (dt/(self.L-self.Lp)) * (-Qn1/self.C - self.R*In + Vrp1)])
+            return rhs
+            
         # - A call to optx.root_find that performs the Newton solve with self.rootfinder
-        raise NotImplementedError("HACKATHON: implement Implicit Euler step")
+        sol = optx.root_find(residual, self.rootfinder, jnp.array([y[0], Vp]))
+        Q_new, V_new = sol.value
+        I_new = sheath_solve(V_new, T, n)
+        return jnp.array([Q_new, I_new]), V_new
+
 
 
     def log_progress(self, t, y, Vp):

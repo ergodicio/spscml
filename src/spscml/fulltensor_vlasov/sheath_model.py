@@ -112,7 +112,7 @@ def calculate_plasma_current(Vp, T, n, Lz, **kwargs):
                     flux_source_enabled=True, nu_ee=nu_ee, nu_ii=nu_ii, adjoint_method=adjoint_method)
 
     CFL = 0.5
-    dtmax = CFL * x_grid.dx / (6*vte)
+    dtmax = CFL * x_grid.dx / (6*vte) * .1
 
     solve = lambda: solver.solve(dtmax, 5000, initial_conditions, boundary_conditions, dtmax)
     result = solve()
