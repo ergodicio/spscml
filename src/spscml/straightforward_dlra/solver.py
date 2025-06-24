@@ -476,12 +476,23 @@ class Solver(eqx.Module):
 
         if self.boundary_type == 'AbsorbingWall':
             # HACKATHON: implement absorbing wall boundary conditions
+        
+            
             # for either 1 or 2 ghost cells
-            raise NotImplementedError("HACKATHON: Implement absorbing wall BCs for DLR solver")
+           # raise NotImplementedError("HACKATHON: Implement absorbing wall BCs for DLR solver")
             if n_ghost_cells == 1:
-                pass
+                return jnp.concatenate([
+                    jnp.atleast_2d(V_leftgoing_matrix @ K[:, 0]).T,
+                    K,
+                    jnp.atleast_2d(V_rightgoing_matrix @ K[:, -1]).T,
+                ], axis=1)
             elif n_ghost_cells == 2:
-                pass
+                K_out_left = K[:,[0,1]]-2*(K[:,[1]]-K[:,[0]])
+                return jnp.concatenate([
+                    (V_leftgoing_matrix @ K_out_left,
+                    K,
+                    (V_rightgoing_matrix @ K[:,[-1, -1]],
+                ], axis=1)
         elif self.boundary_type == 'Periodic':
             if n_ghost_cells == 1:
                 return jnp.concatenate([
