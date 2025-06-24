@@ -174,7 +174,7 @@ class Solver(eqx.Module):
     def maxwellian(self,A,grid,n):
         v = grid.vs
         T = 1.0
-        
+        n = 1.0
         theta = T/A
         
         M = n / jnp.sqrt(2*jnp.pi * theta) * jnp.exp(-v**2 / (2*theta))
