@@ -271,7 +271,7 @@ class Solver(eqx.Module):
             # HACKATHON: E = ...
             E = self. solve_poisson_XSV(Ss,ys,self.grids,args['bcs'],self.plasma)
             return { sp: self.S_step_single_species_RHS(Ss[sp], self.grids[sp], 
-                                                                 {**args_of(sp)})
+                                                                 {**args_of(sp),'E':E})
                     for sp in SPECIES }
 
 
@@ -365,8 +365,9 @@ class Solver(eqx.Module):
 
         def step_Ls_with_E_RHS(Ls):
             # HACKATHON: E = ...
+            E = self. solve_poisson_XL(Ls,ys,self.grids,args['bcs'],self.plasma)
             return { sp: self.L_step_single_species_RHS(Ls[sp], self.grids[sp], 
-                                                                 {**args_of(sp)})
+                                                                 {**args_of(sp),'E':E})
                     for sp in SPECIES }
         
         Ls = rk1({ sp: L_of(*ys[sp]) for sp in SPECIES }, step_Ls_with_E_RHS, args['dt'])
@@ -405,6 +406,7 @@ class Solver(eqx.Module):
         K_diff_right = jnp.diff(K[:, 1:], axis=1) / grid.dx
         K_right_matrix = X @ K_diff_right.T * grid.dx
         
+        
         v_plus = jnp.where(v > 0, v, 0.0)
         v_minus = jnp.where(v < 0, v, 0.0)
         v_flux = jnp.atleast_2d(v_plus) * (K_left_matrix @ V) + jnp.atleast_2d(v_minus) * (K_right_matrix @ V)
@@ -414,15 +416,27 @@ class Solver(eqx.Module):
         # 1. Compute upwinded <X, E^\pm X> matrices based on sign of Z/A * E
         # 2. Apply zero Dirichlet boundaries to L
         # 3. Compute the flux divergence using the slope_limited_flux_divergence function
+        
+        L_diff_left = jnp.diff(L[:, :-1], axis=1) / grid.dx
+        L_diff_right = jnp.diff(L[:, 1:], axis=1) / grid.dx
+        E_plus_matrix = X @ jnp.diag(jnp.where(fac*E > 0, fac*E, 0.0)) @ X.T * grid.dx
+        E_minus_matrix = X @ jnp.diag(jnp.where(fac*E < 0, fac*E, 0.0)) @ X.T * grid.dx
 
+        L_bcs = jnp.pad(L,[(0,0),(2,2)], mode='empty')
+        E_flux_func = lambda left, right: E_plus_matrix @ left + E_minus_matrix @ right
+        E_flux = slope_limited_flux(L_bcs, SCHEME, E_flux_func, grid.dv, axis=1)
+        
+        
+       
         # HACKATHON: add collision terms and flux source terms here
+
         # You'll need to implement:
         # 1. Compute density n
         # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
 
-        return -v_flux
+        return -v_flux - E_flux
 
 
     def ion_flux_out(self, ys):
