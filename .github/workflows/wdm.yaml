@@ -38,6 +38,10 @@ jobs:
           ECR_REPOSITORY: hackathon
           IMAGE_TAG: wdm
         run: |
+          # Use GPU config and requirements
+          cp tesseracts/wdm/tesseract_config_gpu.yaml tesseracts/wdm/tesseract_config.yaml
+          cp tesseracts/wdm/tesseract_requirements_gpu.txt tesseracts/wdm/tesseract_requirements.txt
+          
           # Write custom build steps to tesseract config
           cat << 'EOF' >> tesseracts/wdm/tesseract_config.yaml
           EOF
