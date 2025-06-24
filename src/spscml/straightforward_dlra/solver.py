@@ -269,6 +269,7 @@ class Solver(eqx.Module):
 
         def step_Ss_with_E_RHS(Ss):
             # HACKATHON: E = ...
+            E = self. solve_poisson_XSV(Ss,ys,self.grids,args['bcs'],self.plasma)
             return { sp: self.S_step_single_species_RHS(Ss[sp], self.grids[sp], 
                                                                  {**args_of(sp)})
                     for sp in SPECIES }
@@ -315,6 +316,20 @@ class Solver(eqx.Module):
         # 2. Compute upwind dV/dv matrices <V, E^\pm V>
         # 3. Compute the projected E*df/dv flux term
 
+        E = args['E']
+        Z = args['Z']
+        A = args['A']
+        fac = self.plasma.omega_c_tau * args['Z'] / args['A']
+        E_plus_matrix = X @ jnp.diag(jnp.where(fac*E > 0, fac*E, 0.0)) @ X.T * grid.dx
+        E_minus_matrix = X @ jnp.diag(jnp.where(fac*E < 0, fac*E, 0.0)) @ X.T * grid.dx
+        V_left_matrix = V @ jnp.concatenate([jnp.zeros((r, 1)), jnp.diff(V, axis=1) / grid.dv], axis=1).T * grid.dv
+        V_right_matrix = V @ jnp.concatenate([jnp.diff(V, axis=1) / grid.dv, jnp.zeros((r, 1))], axis=1).T * grid.dv
+
+    
+        E_flux = ((V_left_matrix @ E_plus_matrix) @ S + (V_right_matrix @ E_minus_matrix) @ S
+     
+
+
         # HACKATHON: add collision terms and flux source terms here
         # You'll need to implement:
         # 1. Compute density n
@@ -322,7 +337,7 @@ class Solver(eqx.Module):
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
 
-        return v_term
+        return v_term + E_flux
 
 
     def step_L(self, t, ys, args):
