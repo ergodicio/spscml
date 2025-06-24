@@ -56,9 +56,9 @@ def rho_c_species_KV(K, V, Z, grid):
         Charge density contribution from this species
     """
     # HACKATHON: TODO
-    raise NotImplementedError("HACKATHON: Implement rho_c_species_KV")
-
-
+  #  raise NotImplementedError("HACKATHON: Implement rho_c_species_KV")
+    V_mess_vec = V @ jnp.ones(grid.Nv) * grid.dv
+    return Z * K.T @  V_mess_vec
 def solve_poisson_XSV(Ss, ys, grids, bcs, plasma):
     """
     Solve Poisson equation given S matrices and X, V from current state.
@@ -95,8 +95,10 @@ def rho_c_species_XSV(X, S, V, Z, grid):
         Charge density contribution from this species
     """
     # HACKATHON: TODO
-    raise NotImplementedError("HACKATHON: Implement rho_c_species_XSV")
+  #  raise NotImplementedError("HACKATHON: Implement rho_c_species_XSV")
 
+    V_mess_vec = V @ jnp.ones(grid.Nv) * grid.dv
+    return (X.T @ S @ V_mess_vec) * Z
 
 def solve_poisson_XL(Ls, ys, grids, bcs, plasma):
     """
@@ -132,4 +134,10 @@ def rho_c_species_XL(X, L, Z, grid):
         Charge density contribution from this species
     """
     # HACKATHON: TODO
-    raise NotImplementedError("HACKATHON: Implement rho_c_species_XL")
+   # raise NotImplementedError("HACKATHON: Implement rho_c_species_XL")
+
+
+
+
+    L_mess_vec = L @ jnp.ones(grid.Nv) * grid.dv
+    return (X.T @ L_mess_vec) * Z
