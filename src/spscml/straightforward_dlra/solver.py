@@ -156,7 +156,7 @@ class Solver(eqx.Module):
         def step_Ks_with_E_RHS(Ks):
             # HACKATHON: E = ...
             #V = args['V']
-            E = self. solve_poisson_KV(Ks,ys,self.grids,args['bcs'],self.plasma)
+            E = solve_poisson_KV(Ks,ys,self.grids,args['bcs'],self.plasma)
             return { sp: self.K_step_single_species_RHS(Ks[sp], self.grids[sp], 
                                                                  {**args_of(sp),'E':E})
                     for sp in SPECIES }
