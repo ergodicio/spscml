@@ -75,6 +75,7 @@ solver = Solver(plasma,
                 flux_source_enabled=True,
                 nu_ee=nu*5, nu_ii=nu)
 
+
 CFL = 0.5
 dt = CFL * x_grid.dx / (6*electron_grid.vmax)
 

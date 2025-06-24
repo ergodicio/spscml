@@ -13,7 +13,7 @@ from ..grids import PhaseSpaceGrid
 from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
-from ..utils import zeroth_moment, first_moment, second_moment
+from ..utils import zeroth_moment, first_moment, second_moment, maxwellian_1d
 from ..collisions_and_sources import flux_source_shape_func
 
 class Solver(eqx.Module):
@@ -81,15 +81,18 @@ class Solver(eqx.Module):
         fi = fs['ion']
         # HACKATHON: Solve poisson equation for E
         # See poisson.py -- poisson_solve()
-        E = jnp.zeros(self.grids['x'].Nx)
-        
+    
+        #E = jnp.zeros(self.grids['x'].Nx)
+        rho_c = self.plasma.Ze * zeroth_moment(fe,self.grids['electron']) + \
+                self.plasma.Zi * zeroth_moment(fi,self.grids['ion'])
+        E = poisson_solve(self.grids['x'],self.plasma,rho_c, boundary_conditions)
         electron_rhs = self.vlasov_fp_single_species_rhs(fe, E, self.plasma.Ae, self.plasma.Ze, 
                                                          self.grids['electron'],
                                                          boundary_conditions['electron'], self.nu_ee)
         ion_rhs = self.vlasov_fp_single_species_rhs(fi, E, self.plasma.Ai, self.plasma.Zi, 
                                                          self.grids['ion'],
                                                          boundary_conditions['ion'], self.nu_ii)
-
+    
         if self.flux_source_enabled:
             ion_particle_flux = first_moment(fi, self.grids['ion'])
             total_ion_wall_flux = -ion_particle_flux[0] + ion_particle_flux[-1]
@@ -106,13 +109,20 @@ class Solver(eqx.Module):
 
         return dict(electron=electron_rhs, ion=ion_rhs)
 
-
+    def maxwellian(self,A,grid):
+        v=grid.vs
+        T=1.0
+        n=1.0 
+        theta=T/A
+        
+        M = n / jnp.sqrt(2*jnp.pi * theta) * jnp.exp(-v**2 / (2*theta))
+        return M
 
 
     def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs, nu):
         # free streaming term
         f_bc_x = self.apply_bcs(f, bcs, 'x')
-
+        
         v = jnp.expand_dims(grid.vs, axis=0)
         F = lambda left, right: jnp.where(v > 0, left * v, right * v)
         vdfdx = slope_limited_flux_divergence(f_bc_x, 'minmod', F, 
@@ -120,10 +130,28 @@ class Solver(eqx.Module):
                                               axis=0)
 
         # HACKATHON: implement E*df/dv term
+        f_bc_v = self.apply_bcs(f,bcs,'v')
+        E = jnp.expand_dims(E,axis=1)
+        fac=self.plasma.omega_c_tau * Z/A
+        F = lambda left, right: jnp.where(fac * E > 0, left * fac * E, right * fac * E)
+        Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', F, 
+                                              grid.dv,
+                                              axis=1)
+        #n = self.plasma.Ze * zeroth_moment(f,grid) 
+    
+        n = zeroth_moment(f,grid) 
+       # HACKATHON: implement BGK collision term
+        T = 1.0
+    
+        
+        M = self.maxwellian(A,grid)
+        #M = n / jnp.sqrt(2*jnp.pi * (T/A)) * jnp.exp(-A*(self.grids['v'].vs-nu/n)**2 / (2*T))
 
-        # HACKATHON: implement BGK collision term
-
-        return -vdfdx
+        
+        
+     
+        col = nu * (n[:,None] * M[None,:] - f)
+        return -vdfdx - Edfdv + col
 
 
     def apply_bcs(self, f, bcs, dim):

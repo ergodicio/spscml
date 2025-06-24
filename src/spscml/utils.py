@@ -5,6 +5,9 @@ from .grids import PhaseSpaceGrid
 def maxwellian_1d(A, n, nu, T):
     return lambda x, v: n / jnp.sqrt(2*jnp.pi * (T/A)) * jnp.exp(-A*(v-nu/n)**2 / (2*T))
 
+def maxwellian_1d_v2(A, n, nu, T, v):
+    return n / jnp.sqrt(2*jnp.pi * (T/A)) * jnp.exp(-A*(v-nu/n)**2 / (2*T))
+
 
 def zeroth_moment(f, grid: PhaseSpaceGrid):
     return jnp.sum(f, axis=1) * grid.dv
