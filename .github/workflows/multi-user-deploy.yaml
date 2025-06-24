@@ -46,9 +46,14 @@ jobs:
           USER_IMAGE_TAG="${{ env.USERNAME }}-${TESSERACT_NAME}"
           echo "Building image with tag: $USER_IMAGE_TAG"
           
-          # Use GPU config and requirements
-          cp ${TESSERACT_PATH}/tesseract_config_gpu.yaml ${TESSERACT_PATH}/tesseract_config.yaml
-          cp ${TESSERACT_PATH}/tesseract_requirements_gpu.txt ${TESSERACT_PATH}/tesseract_requirements.txt
+          # Use appropriate config and requirements based on GPU needs
+          if [[ "${{ matrix.tesseract.needs_gpu }}" == "true" ]]; then
+            cp ${TESSERACT_PATH}/tesseract_config_gpu.yaml ${TESSERACT_PATH}/tesseract_config.yaml
+            cp ${TESSERACT_PATH}/tesseract_requirements_gpu.txt ${TESSERACT_PATH}/tesseract_requirements.txt
+          else
+            # Keep existing non-GPU configs (don't overwrite)
+            echo "Using existing CPU configs for ${TESSERACT_PATH}"
+          fi
           
           # Write custom build steps to tesseract config
           cat << 'EOF' >> ${TESSERACT_PATH}/tesseract_config.yaml
