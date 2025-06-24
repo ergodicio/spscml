@@ -243,7 +243,7 @@ class Solver(eqx.Module):
         M = self.maxwellian(A,grid,n)
         nu = args['nu']
         gamma = self.flux_source_shape_fun()* args['flux_out']
-        VM = V @ M * grids.dv
+        VM = V @ M * grid.dv
         collision_term = (n*nu + gamma)[None,:] *VM [:,None] - K * nu
 
         return -v_flux_diff - E_flux + collision_term
