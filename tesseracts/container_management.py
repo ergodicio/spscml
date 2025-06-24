@@ -17,7 +17,9 @@ def create_or_update_tesseract_service(tesseract_name):
     # check if service exists
     service_found = False
     services = ecs_client.list_services(cluster=cluster)
+    print(f"list of all services: {services}")
     for service in services["serviceArns"]:
+        print(f"checking service {service}")
         if tesseract_name in service:
             this_service = service
             service_found = True
