@@ -301,7 +301,7 @@ class Solver(eqx.Module):
 
         v_plus_matrix = V @ jnp.diag(jnp.where(v > 0, v, 0.0)) @ V.T * grid.dv
         v_minus_matrix = V @ jnp.diag(jnp.where(v < 0, v, 0.0)) @ V.T * grid.dv
-
+        n = (K.T @ zeroth_moment(V,grid)).T
         K = self.apply_K_bcs((X.T @ S).T, V, grid, n_ghost_cells=1)
         K_diff_left = jnp.diff(K[:, :-1], axis=1) / grid.dx
         K_left_matrix = X @ K_diff_left.T * grid.dx
@@ -327,7 +327,7 @@ class Solver(eqx.Module):
 
     
         E_flux = (E_plus_matrix @ S @ V_left_matrix.T) + (E_minus_matrix @ S @ V_right_matrix.T )
-        n = (K.T @ zeroth_moment(V,grid)).T
+       
         M = self.maxwellian(A,grid,n)
         nu = args['nu']
         gamma = self.flux_source_shape_fun()* args['flux_out']
