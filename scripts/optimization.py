@@ -58,20 +58,6 @@ def find_initial_voltage(sheath_tx, Ip_target):
     return root
 
 
-# Try out grad of initial voltage first
-
-with Tesseract.from_image("vlasov_sheath") as sheath_tx:
-    Vp0 = find_initial_voltage(sheath_tx, Ip_target) * ureg.volts
-    jax.debug.print("Initial voltage: {}", Vp0)
-
-    f = lambda Ip: find_initial_voltage(sheath_tx, Ip)
-    g = jax.grad(f)(Ip_target)
-    jax.debug.print("grad: {}", g)
-
-
-sys.exit(0)
-
-
 with Tesseract.from_image("tanh_sheath") as sheath_tx:
     Vp0 = find_initial_voltage(sheath_tx) * ureg.volts
 

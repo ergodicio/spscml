@@ -47,7 +47,7 @@ def create_or_update_tesseract_service(tesseract_name, needs_gpu=True):
 
     family_name = tesseract_name + "-family"
     new_task_definition = register_task_definition(
-        ecs_client, new_container_def, family_name
+        ecs_client, new_container_def, family_name, needs_gpu
     )
 
     if service_found:
@@ -91,7 +91,11 @@ def create_or_update_tesseract_service(tesseract_name, needs_gpu=True):
                 }
             },
             capacityProviderStrategy=[
-                {"capacityProvider": "MyAsgCapacityProvider", "weight": 1, "base": 1}
+                {
+                    "capacityProvider": "MyAsgCapacityProvider" if needs_gpu else "ASGCapacityProviderCPU", 
+                    "weight": 1, 
+                    "base": 1
+                }
             ],
             serviceRegistries=[
                 {
@@ -104,11 +108,23 @@ def create_or_update_tesseract_service(tesseract_name, needs_gpu=True):
     return "Service management completed for tesseract: {}".format(tesseract_name)
 
 
-def register_task_definition(ecs_client, new_container_def, family_name):
+def register_task_definition(ecs_client, new_container_def, family_name, needs_gpu):
+    # Adjust resources based on whether GPU is needed
+    if needs_gpu:
+        # GPU instances: g6.xlarge (4 vCPUs, 16GB RAM, 1 GPU)
+        # 1 task per instance (full utilization of the single GPU)
+        cpu_units = "3840"   # ~3.75 vCPUs per task (leaving some for system overhead)
+        memory_mb = "14500"  # ~14.5GB per task (leaving some for system overhead)
+    else:
+        # CPU instances: c6i.8xlarge (32 vCPUs, 64GB RAM)
+        # 8 tasks per instance
+        cpu_units = "3840"   # ~3.75 vCPUs per task (32/8 = 4)
+        memory_mb = "7500"   # ~7.5GB per task (64/8 = 8GB)
+    
     new_task_definition = ecs_client.register_task_definition(
         family=family_name,
-        cpu="2040",
-        memory="7660",
+        cpu=cpu_units,
+        memory=memory_mb,
         containerDefinitions=[new_container_def],
         networkMode="awsvpc",
         requiresCompatibilities=["EC2"],
