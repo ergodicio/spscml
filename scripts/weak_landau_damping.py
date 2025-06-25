@@ -76,8 +76,8 @@ axes[0].set_aspect('auto')
 
 # HACKATHON: check your DLR implementation by plotting the electrostatic
 # energy over time
-#Es = [solve_poisson_ys(frame(i), grids, boundary_conditions, plasma) for i in range(100)]
-#E2s = jnp.array([jnp.sum(E**2/2) * x_grid.dx for E in Es])
-#axes[1].plot(solution.ts, jnp.log10(E2s))
+Es = [solve_poisson_ys(frame(i), grids, boundary_conditions, plasma) for i in range(100)]
+E2s = jnp.array([jnp.sum(E**2/2) * x_grid.dx for E in Es])
+axes[1].plot(solution.ts, jnp.log10(E2s))
 
 plt.show()
