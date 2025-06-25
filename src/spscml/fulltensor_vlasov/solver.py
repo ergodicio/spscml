@@ -13,8 +13,8 @@ from ..grids import PhaseSpaceGrid
 from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
-from ..utils import zeroth_moment, first_moment, second_moment
-from ..collisions_and_sources import flux_source_shape_func
+from ..utils import zeroth_moment, first_moment, second_moment, maxwellian_1d, temperature
+from ..collisions_and_sources import flux_source_shape_func, maxwellian
 
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
@@ -79,9 +79,14 @@ class Solver(eqx.Module):
     def vlasov_rhs(self, fs, boundary_conditions, f0):
         fe = fs['electron']
         fi = fs['ion']
+
         # HACKATHON: Solve poisson equation for E
         # See poisson.py -- poisson_solve()
         E = jnp.zeros(self.grids['x'].Nx)
+        rho_e = zeroth_moment(fe, self.grids['electron'])
+        rho_i = zeroth_moment(fi, self.grids['ion'])
+        rho_c = self.plasma.Zi * rho_i + self.plasma.Ze * rho_e
+        E = poisson_solve(self.grids['x'], self.plasma, rho_c, boundary_conditions)
         
         electron_rhs = self.vlasov_fp_single_species_rhs(fe, E, self.plasma.Ae, self.plasma.Ze, 
                                                          self.grids['electron'],
@@ -120,10 +125,19 @@ class Solver(eqx.Module):
                                               axis=0)
 
         # HACKATHON: implement E*df/dv term
+        E = E[:, None]
+        f_bc_v = self.apply_bcs(f,bcs,'v')
+        oct = self.plasma.omega_c_tau
+        G = lambda left, right: jnp.where(oct*(Z/A) * E > 0, left * oct*(Z/A) * E, right * oct*(Z/A) * E)
+        Edfdv = slope_limited_flux_divergence(f_bc_v, 'minmod', G, grid.dv, axis=1)
 
         # HACKATHON: implement BGK collision term
+        ns = zeroth_moment(f, grid) 
+        ns = ns[:, None]
+        Maxv = maxwellian(grid, A, ns, T=1.0)
+        BGK_coll = nu * (Maxv - f)
 
-        return -vdfdx
+        return -vdfdx - Edfdv + BGK_coll
 
 
     def apply_bcs(self, f, bcs, dim):

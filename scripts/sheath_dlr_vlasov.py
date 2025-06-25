@@ -17,8 +17,8 @@ jax.config.update("jax_debug_nans", True)
 Te = 1.0
 Ti = 1.0
 ne = 1.0
-Ae = 0.04
-Ai = 1.0
+Ae = 0.04 # default: 0.04
+Ai = 1.0  # default: 1.0
 
 vte = jnp.sqrt(Te / Ae)
 vti = jnp.sqrt(Ti / Ai)
@@ -50,22 +50,22 @@ boundary_conditions = {
     'phi': {
         'left': {
             'type': 'Dirichlet',
-            'val': 0.0
+            'val': 0.0 # default: 0.0
         },
         'right': {
             'type': 'Dirichlet',
-            'val': 2.0
+            'val': 2.0 # default: 2.0
         },
     }
 }
 
-nu = 1.1
+nu = 1.1 # default: 1.1
 solver = Solver(plasma, r, grids, nu*5, nu)
 
 dtmax = x_grid.dx / electron_grid.vmax / 10
-print("dt = ", dtmax)
+print("dt_max = ", dtmax)
 
-solve = jax.jit(lambda: solver.solve(0.01/2, 6000, initial_conditions, boundary_conditions, 0.01))
+solve = jax.jit(lambda: solver.solve(0.001/2, 12000, initial_conditions, boundary_conditions, 0.01))
 solution = solve()
 
 # Extract the final timestep
@@ -76,7 +76,7 @@ Xt, S, V = result['electron']
 fe = Xt.T @ S @ V
 ne = Xt.T @ S @ (V @ jnp.ones(electron_grid.Nv)) * electron_grid.dv
 je = -1 * Xt.T @ S @ (V @ electron_grid.vs) * electron_grid.dv
-print(je.shape)
+# print(je.shape)
 assert je.shape == (electron_grid.Nx,)
 
 Xt, S, V = result['ion']
@@ -86,20 +86,25 @@ ji = Xt.T @ S @ (V @ ion_grid.vs) * ion_grid.dv
 
 E = solve_poisson_ys(result, grids, boundary_conditions, plasma)
 
-
+print('fe.shape = ', fe.shape)
 fig, axes = plt.subplots(4, 1, figsize=(10, 8))
 axes[0].imshow(fe.T, origin='lower')
 axes[0].set_aspect("auto")
+axes[0].set_xlabel(r'$x$')
+axes[0].set_ylabel(r'$v$')
+axes[0].set_title('Electron distribution function')
 axes[1].imshow(fi.T, origin='lower')
 axes[1].set_aspect("auto")
+axes[1].set_title('Ion distribution function')
 #axes[2].plot(E)
-axes[2].plot(ji.T, label='ji')
-axes[2].plot(-je.T, label='-je')
-axes[2].plot((ji+je).T, label='j')
-axes[2].plot(E, label='E')
+axes[2].plot(ji.T, label=r'$j_i$')
+axes[2].plot(-je.T, label=r'$-j_e$')
+axes[2].plot((ji+je).T, label=r'$j$')
+axes[2].plot(E, label=r'$E$')
 axes[2].legend()
-axes[3].plot(ne, label='ne')
-axes[3].plot(ni, label='ni')
+axes[3].plot(ne, label=r'$n_e$')
+axes[3].plot(ni, label=r'$n_i$')
 axes[3].legend()
+fig.tight_layout()
 plt.show()
 
