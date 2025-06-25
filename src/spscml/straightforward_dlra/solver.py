@@ -11,6 +11,8 @@ from ..muscl import slope_limited_flux, slope_limited_flux_divergence
 from ..poisson import poisson_solve
 from ..collisions_and_sources import collision_frequency_shape_func, flux_source_shape_func, maxwellian
 from .poisson import solve_poisson_KV, solve_poisson_XSV, solve_poisson_XL
+from ..utils import zeroth_moment
+from ..collisions_and_sources import maxwellian, maxwellianv
 
 SPECIES = ['electron', 'ion']
 
@@ -146,11 +148,14 @@ class Solver(eqx.Module):
         K_of = lambda X, S, V: (X.T @ S).T
 
         flux_out = self.ion_flux_out(ys)
+        
         args_of = lambda sp: {**args, 'V': ys[sp][2], 'Z': self.Zs[sp], 'A': self.As[sp], 'nu': self.nus[sp],
                               'flux_out': flux_out}
 
         def step_Ks_with_E_RHS(Ks):
             # HACKATHON: E = ...
+            E = solve_poisson_KV(Ks, ys, self.grids, args['bcs'], self.plasma)
+            args['E'] = E
             return { sp: self.K_step_single_species_RHS(Ks[sp], self.grids[sp], 
                                                                  {**args_of(sp)})
                     for sp in SPECIES }
@@ -204,8 +209,26 @@ class Solver(eqx.Module):
         # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func, flux_source_shape_func, and maxwellian in collisions_and_sources.py
-
-        return -v_flux_diff
+        E = args['E'].reshape(-1)
+        Dp_V = jnp.diff(jnp.concatenate([jnp.zeros((V.shape[0], 1)), V], axis=1), axis=1) / grid.dv
+        Dm_V = jnp.diff(jnp.concatenate([V, jnp.zeros((V.shape[0], 1))], axis=1), axis=1) / grid.dv
+        E_plus  = jnp.where(args['Z'] * E > 0, E, 0.)
+        E_minus = jnp.where(args['Z'] * E < 0, E, 0.)
+        E_term1 = V @ Dp_V.T * grid.dv
+        E_term2 = V @ Dm_V.T * grid.dv
+        E_flux = self.plasma.omega_c_tau * args['Z']/args['A'] * ( E_term1 @ (K @ jnp.diag(E_plus)) + E_term2 @ (K @ jnp.diag(E_minus)) )
+        
+        nu = args['nu']
+        ns = (K.T @ zeroth_moment(V, grid)).reshape(1, -1)
+        Mv  = maxwellianv(grid, args['A']).reshape(1, -1)
+        
+        gamma = args['flux_out']
+        gamma *= jnp.maximum(flux_source_shape_func(grid), 0.0).reshape(1, -1)
+        
+        collision_term1 = (V @ Mv.T) @ (nu * ns + gamma) * grid.dv
+        collision_term2 = V @ V.T @ K * nu * grid.dv
+        
+        return -v_flux_diff - E_flux + collision_term1 - collision_term2 
 
 
     def step_S(self, t, ys, args):
@@ -228,6 +251,8 @@ class Solver(eqx.Module):
 
         def step_Ss_with_E_RHS(Ss):
             # HACKATHON: E = ...
+            E = solve_poisson_XSV(Ss, ys, self.grids, args['bcs'], self.plasma)
+            args['E'] = E
             return { sp: self.S_step_single_species_RHS(Ss[sp], self.grids[sp], 
                                                                  {**args_of(sp)})
                     for sp in SPECIES }
@@ -280,8 +305,27 @@ class Solver(eqx.Module):
         # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
-
-        return v_term
+        
+        E = args['E'].reshape(-1)
+        Dp_V = jnp.diff(jnp.concatenate([jnp.zeros((V.shape[0], 1)), V], axis=1), axis=1) / grid.dv
+        Dm_V = jnp.diff(jnp.concatenate([V, jnp.zeros((V.shape[0], 1))], axis=1), axis=1) / grid.dv
+        E_plus  = jnp.where(args['Z'] * E > 0, E, 0.)
+        E_minus = jnp.where(args['Z'] * E < 0, E, 0.)
+        V_term1 = V @ Dp_V.T * grid.dv
+        V_term2 = V @ Dm_V.T * grid.dv
+        X_term1 = X @ (X @ jnp.diag(E_plus)).T * grid.dx
+        X_term2 = X @ (X @ jnp.diag(E_minus)).T * grid.dx
+        E_flux = self.plasma.omega_c_tau * args['Z']/args['A'] * ( X_term1 @ S @ V_term1.T + X_term2 @ S @ V_term2.T )
+        gamma = args['flux_out']
+        gamma *= jnp.maximum(flux_source_shape_func(grid), 0.0).reshape(1, -1)
+        nu    = args['nu']
+        ns    = (X.T @ S @ zeroth_moment(V, grid)).reshape(1, -1)
+        Mv    = maxwellianv(grid, args['A']).reshape(1, -1)
+        # print(K.shape, ns.shape, gamma.shape, Mv.shape)
+        collision_term1 = X @ (nu * ns + gamma).T * grid.dx @ Mv @ V.T * grid.dv
+        collision_term2 = X @ (X * nu).T @ S @ (V @ V.T) * grid.dx * grid.dv
+        
+        return v_term + E_flux - collision_term1 + collision_term2
 
 
     def step_L(self, t, ys, args):
@@ -303,6 +347,8 @@ class Solver(eqx.Module):
 
         def step_Ls_with_E_RHS(Ls):
             # HACKATHON: E = ...
+            E = solve_poisson_XL(Ls, ys, self.grids, args['bcs'], self.plasma)
+            args['E'] = E
             return { sp: self.L_step_single_species_RHS(Ls[sp], self.grids[sp], 
                                                                  {**args_of(sp)})
                     for sp in SPECIES }
@@ -359,8 +405,27 @@ class Solver(eqx.Module):
         # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
+     
+        Dp_L = jnp.diff(jnp.concatenate([jnp.zeros((L.shape[0], 1)), L], axis=1), axis=1) / grid.dv
+        Dm_L = jnp.diff(jnp.concatenate([L, jnp.zeros((L.shape[0], 1))], axis=1), axis=1) / grid.dv
+        
+        E = args['E'].reshape(-1)
+        E_plus  = jnp.where(args['Z'] * E>0, E, 0.)
+        E_minus = jnp.where(args['Z'] * E<0, E, 0.)
+        
+        E_flux = self.plasma.omega_c_tau * args['Z'] / args['A'] * X @ (X @ jnp.diag(E_plus)).T * grid.dx @ Dp_L 
+        E_flux += self.plasma.omega_c_tau * args['Z'] / args['A'] * X @ (X @ jnp.diag(E_minus)).T * grid.dx @ Dm_L
+        
+        nu = args['nu']
+        gamma = args['flux_out']
+        gamma *= jnp.maximum(flux_source_shape_func(grid), 0.0).reshape(-1, 1)
+        ns = X.T @ S @ zeroth_moment(V, grid).reshape(-1, 1)
+        Mv = maxwellianv(grid, args['A']).reshape(1, -1)
+        
+        collision_term1 = X @ ( ns * nu + gamma ) @ Mv * grid.dx
+        collision_term2 = X @ (nu*X.T) @ L * grid.dx
 
-        return -v_flux
+        return -v_flux - E_flux + collision_term1 - collision_term2
 
 
     def ion_flux_out(self, ys):
@@ -394,6 +459,7 @@ class Solver(eqx.Module):
         Returns:
             K matrix with boundary conditions applied
         """
+        r = K.shape[0]
         v = grid.vs
         V_leftgoing_matrix = V @ jnp.diag(jnp.where(v < 0, 1.0, 0.0)) @ V.T * grid.dv
         V_rightgoing_matrix = V @ jnp.diag(jnp.where(v > 0, 1.0, 0.0)) @ V.T * grid.dv
@@ -401,11 +467,23 @@ class Solver(eqx.Module):
         if self.boundary_type == 'AbsorbingWall':
             # HACKATHON: implement absorbing wall boundary conditions
             # for either 1 or 2 ghost cells
-            raise NotImplementedError("HACKATHON: Implement absorbing wall BCs for DLR solver")
+            # raise NotImplementedError("HACKATHON: Implement absorbing wall BCs for DLR solver")
+            left_ghost  = K[:, 0] @ V_leftgoing_matrix
+            right_ghost = K[:, -1] @ V_rightgoing_matrix
             if n_ghost_cells == 1:
-                pass
+                return jnp.concatenate([
+                    left_ghost.reshape(r, 1),
+                    K,
+                    right_ghost.reshape(r, 1)
+                ], axis=1)
             elif n_ghost_cells == 2:
-                pass
+                return jnp.concatenate([
+                    left_ghost.reshape(r, 1),
+                    left_ghost.reshape(r, 1),
+                    K,
+                    right_ghost.reshape(r, 1),
+                    right_ghost.reshape(r, 1)
+                ], axis=1)
         elif self.boundary_type == 'Periodic':
             if n_ghost_cells == 1:
                 return jnp.concatenate([

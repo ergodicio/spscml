@@ -65,7 +65,7 @@ solver = Solver(plasma, r, grids, nu*5, nu)
 dtmax = x_grid.dx / electron_grid.vmax / 10
 print("dt = ", dtmax)
 
-solve = jax.jit(lambda: solver.solve(0.01/2, 6000, initial_conditions, boundary_conditions, 0.01))
+solve = jax.jit(lambda: solver.solve(0.01/20, 6000, initial_conditions, boundary_conditions, 0.01))
 solution = solve()
 
 # Extract the final timestep

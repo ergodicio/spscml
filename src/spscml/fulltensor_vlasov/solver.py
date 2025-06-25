@@ -14,7 +14,7 @@ from ..rk import rk1, ssprk2, imex_ssp2, imex_euler
 from ..muscl import slope_limited_flux_divergence
 from ..poisson import poisson_solve
 from ..utils import zeroth_moment, first_moment, second_moment
-from ..collisions_and_sources import flux_source_shape_func
+from ..collisions_and_sources import flux_source_shape_func, maxwellian
 
 class Solver(eqx.Module):
     plasma: TwoSpeciesPlasma
@@ -82,6 +82,10 @@ class Solver(eqx.Module):
         # HACKATHON: Solve poisson equation for E
         # See poisson.py -- poisson_solve()
         E = jnp.zeros(self.grids['x'].Nx)
+        rho_e = zeroth_moment(fe, self.grids['electron'])
+        rho_i = zeroth_moment(fi, self.grids['ion'])
+        rho   = self.plasma.Zi * rho_i + self.plasma.Ze * rho_e
+        E     = poisson_solve(self.grids['x'], self.plasma, rho, boundary_conditions)
         
         electron_rhs = self.vlasov_fp_single_species_rhs(fe, E, self.plasma.Ae, self.plasma.Ze, 
                                                          self.grids['electron'],
@@ -110,9 +114,9 @@ class Solver(eqx.Module):
 
 
     def vlasov_fp_single_species_rhs(self, f, E, A, Z, grid, bcs, nu):
+        E = E[:, None]
         # free streaming term
         f_bc_x = self.apply_bcs(f, bcs, 'x')
-
         v = jnp.expand_dims(grid.vs, axis=0)
         F = lambda left, right: jnp.where(v > 0, left * v, right * v)
         vdfdx = slope_limited_flux_divergence(f_bc_x, 'minmod', F, 
@@ -120,10 +124,18 @@ class Solver(eqx.Module):
                                               axis=0)
 
         # HACKATHON: implement E*df/dv term
+        f_bc_v = self.apply_bcs(f, bcs, 'v')
+        G = lambda left, right: jnp.where(Z*E/A > 0, left * Z*E/A, right * Z*E/A)
+        Edfdv = self.plasma.omega_c_tau * slope_limited_flux_divergence(
+                                                                f_bc_v, 'minmod', G, grid.dv, axis=1
+                                                                )
 
         # HACKATHON: implement BGK collision term
+        ns = zeroth_moment(f, grid)
+        # ns = ns[:, None]
+        Qs = nu * (maxwellian(grid, A, ns) - f)
 
-        return -vdfdx
+        return -vdfdx - Edfdv + Qs
 
 
     def apply_bcs(self, f, bcs, dim):

@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 from ..poisson import poisson_solve
+from ..utils import zeroth_moment
 
 
 def solve_poisson_ys(ys, grids, bcs, plasma):
@@ -56,7 +57,8 @@ def rho_c_species_KV(K, V, Z, grid):
         Charge density contribution from this species
     """
     # HACKATHON: TODO
-    raise NotImplementedError("HACKATHON: Implement rho_c_species_KV")
+    # raise NotImplementedError("HACKATHON: Implement rho_c_species_KV")
+    return Z * K.T @ zeroth_moment(V, grid)
 
 
 def solve_poisson_XSV(Ss, ys, grids, bcs, plasma):
@@ -95,7 +97,8 @@ def rho_c_species_XSV(X, S, V, Z, grid):
         Charge density contribution from this species
     """
     # HACKATHON: TODO
-    raise NotImplementedError("HACKATHON: Implement rho_c_species_XSV")
+    # raise NotImplementedError("HACKATHON: Implement rho_c_species_XSV")
+    return Z * X.T @ S @ zeroth_moment(V, grid)
 
 
 def solve_poisson_XL(Ls, ys, grids, bcs, plasma):
@@ -132,4 +135,5 @@ def rho_c_species_XL(X, L, Z, grid):
         Charge density contribution from this species
     """
     # HACKATHON: TODO
-    raise NotImplementedError("HACKATHON: Implement rho_c_species_XL")
+    # raise NotImplementedError("HACKATHON: Implement rho_c_species_XL")
+    return Z * X.T @ zeroth_moment(L, grid)

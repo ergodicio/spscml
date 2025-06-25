@@ -4,11 +4,11 @@ import jax.numpy as jnp
 def collision_frequency_shape_func(grids, expand_dims=False):
     """
     Calculate collision frequency shape function.
-
+    
     Args:
         grids: Dictionary containing spatial grid with 'x' key
         expand_dims: If True, add extra dimension for broadcasting
-
+        
     Returns:
         Collision frequency shape function
     """
@@ -21,7 +21,7 @@ def collision_frequency_shape_func(grids, expand_dims=False):
     x = grids['x'].xs
     h0 = lambda x: 1 + jnp.exp((x/efolding_dist) - midpt/efolding_dist)
     h = 1 / (0.5 * (h0(x) + h0(-x)))
-
+    
     if expand_dims:
         return jnp.expand_dims(h, axis=1)
     else:
@@ -31,10 +31,10 @@ def collision_frequency_shape_func(grids, expand_dims=False):
 def flux_source_shape_func(x_grid):
     """
     Compute flux source shape function for particle injection.
-
+    
     Args:
         x_grid: Spatial grid object
-
+        
     Returns:
         Spatial shape function for flux source
     """
@@ -45,17 +45,37 @@ def flux_source_shape_func(x_grid):
 def maxwellian(grid, A, n, T=1.0):
     """
     Compute Maxwellian distribution for collision operator.
-
+    
     Args:
         grid: Phase space grid
         A: Mass ratio
         n: Density (can be scalar or array)
         T: Temperature (default 1.0)
-
+        
     Returns:
         Maxwellian distribution in velocity space
     """
     v = grid.vs
     theta = T / A
-    M = jnp.expand_dims(n, 1) / (jnp.sqrt(2*jnp.pi*theta)) * jnp.exp(-jnp.expand_dims(v, 0)**2 / (2*theta))
+    n = n[:, None]
+    v = v[None, :]
+    M = n / (jnp.sqrt(2*jnp.pi*theta)) * jnp.exp(-v**2 / (2*theta))
+    return M
+
+def maxwellianv(grid, A, T=1.0):
+    """
+    Compute Maxwellian distribution for collision operator.
+    
+    Args:
+        grid: Phase space grid
+        A: Mass ratio
+        n: Density (can be scalar or array)
+        T: Temperature (default 1.0)
+        
+    Returns:
+        Maxwellian distribution in velocity space
+    """
+    v = grid.vs
+    theta = T / A
+    M = 1.0 / (jnp.sqrt(2*jnp.pi*theta)) * jnp.exp(-v**2 / (2*theta))
     return M
