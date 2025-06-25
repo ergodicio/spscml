@@ -3,12 +3,14 @@
 
 # Add Python requirements like this:
 ../../../spscml
-jax[cpu]==0.6.0
+jax[cpu]~=0.6.0
 equinox
 mlflow
 matplotlib
 tesseract-jax
 boto3
+optimistix
+lineax @ git+https://github.com/jpbrodrick89/lineax.git@jpb/novmap
 
 # This may contain private dependencies via SSH URLs:
 # git+ssh://git@github.com/username/repo.git@branch
