@@ -42,7 +42,7 @@ def create_or_update_tesseract_service(tesseract_name, needs_gpu=True):
         },
         "resourceRequirements": [{"type": "GPU", "value": "1"}] if needs_gpu else [],
         "entryPoint": ["tesseract-runtime"],
-        "command": ["serve", "--host", "0.0.0.0"],
+        "command": ["serve", "--host", "0.0.0.0", "--num-workers", "8"],
     }
 
     family_name = tesseract_name + "-family"
