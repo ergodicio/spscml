@@ -75,11 +75,11 @@ solver = Solver(plasma,
                 flux_source_enabled=True,
                 nu_ee=nu*5, nu_ii=nu)
 
-CFL = 0.5
-dt = CFL * x_grid.dx / (6*electron_grid.vmax)
-
-solve = jax.jit(lambda: solver.solve(dt, 10000, initial_conditions, boundary_conditions, 0.1))
+solve = jax.jit(lambda: solver.solve(0.001/2, 12000, initial_conditions, boundary_conditions, 0.1))
 result = solve()
+
+#E = solver.poisson_solve_from_fs(result, boundary_conditions) 
+#fig, axes = plt.subplots(3, 1, figsize=(10, 8))
 
 fe = result['electron']
 fi = result['ion']
@@ -100,17 +100,24 @@ E = poisson_solve(x_grid, plasma, ni-ne, boundary_conditions)
 
 fig, axes = plt.subplots(4, 1, figsize=(10, 8))
 axes[0].imshow(fe.T, origin='lower')
+axes[0].set_xlabel('x')
+axes[0].set_ylabel('v')
 axes[0].set_aspect("auto")
-axes[0].set_title("$f_e$")
+axes[0].legend()
 axes[1].imshow(fi.T, origin='lower')
+axes[1].set_xlabel('fi')
 axes[1].set_aspect("auto")
-axes[1].set_title("$f_i$")
+axes[1].set_xlabel('x')
+axes[1].set_ylabel('v')
 axes[2].plot(ji.T, label='ji')
 axes[2].plot(-je.T, label='-je')
 axes[2].plot((ji+je).T, label='j')
 axes[2].plot(E, label='E')
+axes[2].set_xlabel('x')
 axes[2].legend()
 axes[3].plot(ne, label='ne')
 axes[3].plot(ni, label='ni')
+axes[3].set_xlabel('x')
 axes[3].legend()
+fig.tight_layout()
 plt.show()

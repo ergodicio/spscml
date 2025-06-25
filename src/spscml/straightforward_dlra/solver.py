@@ -11,6 +11,8 @@ from ..muscl import slope_limited_flux, slope_limited_flux_divergence
 from ..poisson import poisson_solve
 from ..collisions_and_sources import collision_frequency_shape_func, flux_source_shape_func, maxwellian
 from .poisson import solve_poisson_KV, solve_poisson_XSV, solve_poisson_XL
+from ..utils import zeroth_moment
+from ..collisions_and_sources import maxwellian, maxwellianv
 
 SPECIES = ['electron', 'ion']
 
@@ -150,7 +152,10 @@ class Solver(eqx.Module):
                               'flux_out': flux_out}
 
         def step_Ks_with_E_RHS(Ks):
-            # HACKATHON: E = ...
+            # HACKATHON:
+            E = solve_poisson_KV(Ks, ys, self.grids, args['bcs'], plasma = self.plasma)
+            args['E'] = E
+
             return { sp: self.K_step_single_species_RHS(Ks[sp], self.grids[sp], 
                                                                  {**args_of(sp)})
                     for sp in SPECIES }
@@ -178,7 +183,7 @@ class Solver(eqx.Module):
         Returns:
             Time derivative of K matrix
         """
-        V = args['V']
+        V = args['V'] # r*Nv
         v = grid.vs
         r = self.r
         assert V.shape == (r, grid.Nv)
@@ -195,17 +200,66 @@ class Solver(eqx.Module):
         # HACKATHON: add E*df/dv term here
         # You'll need to implement:
         # 1. Compute upwinded E arrays based on sign of Z/A * E
-        # 2. Compute upwind dV/dv matrices <V, D^\pm V>
+        #E = args['E'] # Nx*1
+        #oct = self.plasma.omega_c_tau
+        """ Zs, As = args['Z'], args['A']
+        E_plus = jnp.where(oct*(Zs/As) * E > 0, oct*(Zs/As) * E , 0.0)
+        E_minus = jnp.where(oct*(Zs/As) * E < 0, oct*(Zs/As) * E, 0.0) """
+    
+        """ # 2. Compute upwind dV/dv matrices <V, D^\pm V>
+        Dv_plus = jnp.diff(jnp.concatenate([jnp.zeros((r,1)), V], axis = 1), axis = 1)/grid.dv # r*Nv, extend boundary conditions
+        Dv_minus = jnp.diff(jnp.concatenate([V, jnp.zeros((r,1))], axis =1), axis = 1)/grid.dv
+        diff_plus_v = V @ Dv_plus.T * grid.dv # r*r
+        diff_minus_v = V @ Dv_minus.T * grid.dv
+        
         # 3. Compute the projected E*df/dv flux term
+        E_flux = diff_plus_v @ (K @ jnp.diag(E_plus)) + diff_minus_v @ (K @ jnp.diag(E_minus)) # r*Nx
 
-        # HACKATHON: add collision terms and flux source terms here
-        # You'll need to implement:
+        # HACKATHON: add collision terms and flux source terms here. You'll need to implement:
         # 1. Compute density n
+        v_average = V @ jnp.ones((grid.Nv,1)) * grid.dv # r*1
+        n = K.T @ v_average # Nx*1
+
         # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
+        Maxwell_v = maxwellian(grid, As, 1.0, T=1.0)[:,None] # Nv * 1
+        nus = args['nu']
+        Q1 = V @ (Maxwell_v @ n.T) * nus * grid.dv # r*Nx
+        Q2 = V @ V.T @ K * nus * grid.dv
+        Q_flux = Q1 - Q2
+
         # 3. Flux source terms for particle injection
+        flux_out = args['flux_out'] 
+        flux_source_weight = jnp.maximum(flux_source_shape_func(grid), 0.0)[:, None] # Nx*1
+        Inject_flux1 = flux_out * flux_source_weight # Nx*1
+        
+        Maxwell_g = maxwellian(grid, As, 1.0, T=1.0)[:,None] # Nv*1, extend dimension
+        Inject_flux = (V @ Maxwell_g) @ Inject_flux1.T * grid.dv # r*Nx
+        
         # See collision_frequency_shape_func, flux_source_shape_func, and maxwellian in collisions_and_sources.py
 
-        return -v_flux_diff
+        return -v_flux_diff - E_flux + Q_flux + Inject_flux """
+
+        E = args['E'].reshape(-1)
+        Dp_V = jnp.diff(jnp.concatenate([jnp.zeros((V.shape[0], 1)), V], axis=1), axis=1) / grid.dv
+        Dm_V = jnp.diff(jnp.concatenate([V, jnp.zeros((V.shape[0], 1))], axis=1), axis=1) / grid.dv
+        E_plus  = jnp.where(args['Z'] * E > 0, E, 0.)
+        E_minus = jnp.where(args['Z'] * E < 0, E, 0.)
+        E_term1 = V @ Dp_V.T * grid.dv
+        E_term2 = V @ Dm_V.T * grid.dv
+        E_flux = self.plasma.omega_c_tau * args['Z']/args['A'] * ( E_term1 @ (K @ jnp.diag(E_plus)) + E_term2 @ (K @ jnp.diag(E_minus)) )
+        
+        nu = args['nu']
+        ns = (K.T @ zeroth_moment(V, grid)).reshape(1, -1)
+        Mv  = maxwellianv(grid, args['A']).reshape(1, -1)
+        
+        gamma = args['flux_out']
+        gamma *= jnp.maximum(flux_source_shape_func(grid), 0.0).reshape(1, -1)
+        
+        collision_term1 = (V @ Mv.T) @ (nu * ns + gamma) * grid.dv
+        collision_term2 = V @ V.T @ K * nu * grid.dv
+        
+        return -v_flux_diff - E_flux + collision_term1 - collision_term2 
+
 
 
     def step_S(self, t, ys, args):
@@ -227,7 +281,9 @@ class Solver(eqx.Module):
                               'flux_out': flux_out}
 
         def step_Ss_with_E_RHS(Ss):
-            # HACKATHON: E = ...
+            # HACKATHON: 
+            E = solve_poisson_XSV(Ss, ys, self.grids, args['bcs'], self.plasma) 
+            args['E'] = E
             return { sp: self.S_step_single_species_RHS(Ss[sp], self.grids[sp], 
                                                                  {**args_of(sp)})
                     for sp in SPECIES }
@@ -273,15 +329,70 @@ class Solver(eqx.Module):
         # 1. Compute upwinded <X, E^\pm X> matrices based on sign of Z/A * E
         # 2. Compute upwind dV/dv matrices <V, E^\pm V>
         # 3. Compute the projected E*df/dv flux term
+        E = args['E'] # Nx*1
+        oct = self.plasma.omega_c_tau
+        Zs, As = args['Z'], args['A']
+        E_plus = jnp.where(oct*(Zs/As) * E > 0, oct*(Zs/As) * E , 0.0) # Nx * 1
+        E_minus = jnp.where(oct*(Zs/As) * E < 0, oct*(Zs/As) * E, 0.0)
 
-        # HACKATHON: add collision terms and flux source terms here
-        # You'll need to implement:
-        # 1. Compute density n
-        # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
-        # 3. Flux source terms for particle injection
-        # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
+        Dv_plus = jnp.diff(jnp.concatenate([jnp.zeros((r,1)), (V)], axis = 1), axis=1)/grid.dv ## extend boundary conditions
+        Dv_minus = jnp.diff(jnp.concatenate([(V), jnp.zeros((r,1))], axis = 1), axis = 1)/grid.dv
+        diff_plus_v = V @ Dv_plus.T * grid.dv # r*r
+        diff_minus_v = V @ Dv_minus.T * grid.dv
+        
+        XE_plus, XE_minus = X @ jnp.diag(E_plus) @ X.T * grid.dx, X @ jnp.diag(E_minus) @ X.T * grid.dx  # r*r
+        XE_plus_flux = XE_plus @ S @ diff_plus_v.T
+        XE_minus_flux = XE_minus @ S @ diff_minus_v.T
+        XE_flux = XE_plus_flux + XE_minus_flux
 
-        return v_term
+        # # HACKATHON: add collision terms and flux source terms here
+        # # You'll need to implement:
+        # # 1. Compute density n
+        n = X.T @ S @ jnp.sum(V, axis=1) * grid.dv # Nx*1
+        n = n[:,None]
+
+        # # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
+        Mv = maxwellian(grid, As, 1.0, T=1.0)[None, :] # 1 * Nv
+        Maxwell_g = maxwellian(grid, As, 1.0, T=1.0)[:, None] # (Nv,1)
+        
+        nus = args['nu'] # scalar
+        X_nu = X @ n * nus * grid.dx # r*1
+        
+        Q1 = X_nu @ (V @ Maxwell_g).T * grid.dv # r*r
+        Q2 = (X @ X.T) @ S @ V @ V.T * nus * grid.dx * grid.dv # r*r 
+        Q_flux = Q1 - Q2
+
+        # # 3. Flux source terms for particle injection
+        flux_out = args['flux_out'] 
+        flux_source_weight = jnp.maximum(flux_source_shape_func(self.grids['x']), 0.0)[:, None] # Nx*1
+        Inject_flux1 = X @ (flux_out * flux_source_weight) * grid.dx # r*1
+        Inject_flux = Inject_flux1 @ (V @ Maxwell_g).T * grid.dv # r*r
+
+        # return v_term + XE_flux - Q_flux - Inject_flux
+        #E = args['E'].reshape(-1)
+        Dp_V = jnp.diff(jnp.concatenate([jnp.zeros((V.shape[0], 1)), V], axis=1), axis=1) / grid.dv
+        Dm_V = jnp.diff(jnp.concatenate([V, jnp.zeros((V.shape[0], 1))], axis=1), axis=1) / grid.dv
+        E_plus  = jnp.where(args['Z'] * E > 0, E, 0.)
+        E_minus = jnp.where(args['Z'] * E < 0, E, 0.)
+        V_term1 = V @ Dp_V.T * grid.dv
+        V_term2 = V @ Dm_V.T * grid.dv
+        X_term1 = X @ (X @ jnp.diag(E_plus)).T * grid.dx
+        X_term2 = X @ (X @ jnp.diag(E_minus)).T * grid.dx
+        E_flux = self.plasma.omega_c_tau * args['Z']/args['A'] * ( X_term1 @ S @ V_term1.T + X_term2 @ S @ V_term2.T )
+        gamma = args['flux_out']
+        gamma *= jnp.maximum(flux_source_shape_func(grid), 0.0).reshape(1, -1)
+        
+        ns    = (X.T @ S @ zeroth_moment(V, grid)).reshape(1, -1)
+        #Mv    = maxwellianv(grid, args['A']).reshape(1, -1)
+        
+      
+        collision_term1 = X @ (nus * ns).T * grid.dx @ Mv @ V.T * grid.dv
+        #collision_term1 = X @ (nus * ns + gamma).T * grid.dx @ Mv @ V.T * grid.dv
+        collision_term2 = X @ (X * nus).T @ S @ (V @ V.T) * grid.dx * grid.dv
+        #Inject_flux = X @ (gamma).T * grid.dx @ Mv @ V.T * grid.dv
+        
+        return v_term + XE_flux - Inject_flux - Q_flux  # - collision_term1 + collision_term2
+
 
 
     def step_L(self, t, ys, args):
@@ -298,11 +409,14 @@ class Solver(eqx.Module):
         """
         L_of = lambda X, S, V: S @ V
         flux_out = self.ion_flux_out(ys)
+
         args_of = lambda sp: {**args, 'X': ys[sp][0], 'Z': self.Zs[sp], 'A': self.As[sp], 
                               'nu': self.nus[sp], 'flux_out': flux_out}
 
         def step_Ls_with_E_RHS(Ls):
-            # HACKATHON: E = ...
+            # HACKATHON: 
+            E = solve_poisson_XL(Ls, ys, self.grids, args['bcs'], self.plasma)
+            args['E'] = E
             return { sp: self.L_step_single_species_RHS(Ls[sp], self.grids[sp], 
                                                                  {**args_of(sp)})
                     for sp in SPECIES }
@@ -350,17 +464,53 @@ class Solver(eqx.Module):
         # HACKATHON: add E*df/dv term here
         # You'll need to implement:
         # 1. Compute upwinded <X, E^\pm X> matrices based on sign of Z/A * E
+        E = args['E'] # Nx*1
+        oct = self.plasma.omega_c_tau
+        Zs, As = args['Z'], args['A']
+        E_plus = jnp.where(oct*(Zs/As) * E > 0, oct*(Zs/As) * E , 0.0) # Nx * 1
+        E_minus = jnp.where(oct*(Zs/As) * E < 0, oct*(Zs/As) * E, 0.0)
+
+        Dp_L = jnp.diff(jnp.concatenate([jnp.zeros((r, 1)), L], axis=1), axis=1) / grid.dv
+        Dm_L = jnp.diff(jnp.concatenate([L, jnp.zeros((r, 1))], axis=1), axis=1) / grid.dv
+
+        XE_plus, XE_minus = X @ jnp.diag(E_plus) @ X.T * grid.dx, X @ jnp.diag(E_minus) @ X.T * grid.dx # r*r
+        L_flux = XE_plus @ Dp_L + XE_minus @ Dm_L # r*Nv
+
         # 2. Apply zero Dirichlet boundaries to L
+        # L_left = jnp.concatenate([jnp.zeros((r, 2)), L], axis=1)
+        # L_zero_bc = jnp.concatenate([L_left, jnp.zeros((r, 2))], axis=1) #
+        # 2nd order diff: uses up 4 v's
+        
+         # r*Nx, extend boundary conditions
         # 3. Compute the flux divergence using the slope_limited_flux_divergence function
+        # L_flux = slope_limited_flux_divergence(L_zero_bc, SCHEME, lambda left, right: XE_plus @ left + XE_minus @ right, grid.dv, axis=1)
 
         # HACKATHON: add collision terms and flux source terms here
         # You'll need to implement:
         # 1. Compute density n
+        n = X.T @ jnp.sum(L, axis=1) * grid.dv # Nx*1  
+
         # 2. BGK collision operator: nu * (M - f) where M is Maxwellian with density n
+        Maxwell_g = maxwellian(grid, As, 1.0, T=1.0) # (Nv,) global Maxwellian 
+        nus = args['nu'] # Nx*1
+        X_nu = X @ n * nus * grid.dx # (r,)
+        X_nu = jnp.expand_dims(X_nu, axis=1)  # r * 1
+        Maxwell_g = Maxwell_g[None,:] # 1*Nv, extend dimension
+        Q1 = X_nu @ Maxwell_g # r*Nv
+        Q2 = (X @ X.T) @ L * nus * grid.dx # r*Nv
+        Q_flux = Q1 - Q2
+
         # 3. Flux source terms for particle injection
         # See collision_frequency_shape_func and flux_source_shape_func in collisions_and_sources.py
+        flux_out = args['flux_out'] 
+        flux_source_weight = jnp.maximum(flux_source_shape_func(self.grids['x']), 0.0)[:, None] # Nx*1
+        Inject_flux1 = X @ (flux_out * flux_source_weight) # r*1
 
-        return -v_flux
+        Maxwell_g = maxwellian(grid, As, 1.0, T=1.0) 
+        Maxwell_g = Maxwell_g[:, None] # Nv*1, extend dimension
+        Inject_flux = Inject_flux1 @ Maxwell_g.T # r*Nv
+    
+        return -v_flux - L_flux + Q_flux + Inject_flux
 
 
     def ion_flux_out(self, ys):
@@ -374,7 +524,7 @@ class Solver(eqx.Module):
             Net ion flux out of the domain
         """
         X, S, V = ys['ion']
-        K = (X.T @ S).T
+        K = (X.T @ S).T # r*Nx
         v = self.grids['ion'].vs
         v_vec = V @ self.grids['ion'].vs * self.grids['ion'].dv
         flux_out = -(K[:, 0]).T @ v_vec + (K[:, -1]).T @ v_vec
@@ -395,17 +545,32 @@ class Solver(eqx.Module):
             K matrix with boundary conditions applied
         """
         v = grid.vs
-        V_leftgoing_matrix = V @ jnp.diag(jnp.where(v < 0, 1.0, 0.0)) @ V.T * grid.dv
+        V_leftgoing_matrix = V @ jnp.diag(jnp.where(v < 0, 1.0, 0.0)) @ V.T * grid.dv # r*r
         V_rightgoing_matrix = V @ jnp.diag(jnp.where(v > 0, 1.0, 0.0)) @ V.T * grid.dv
 
         if self.boundary_type == 'AbsorbingWall':
             # HACKATHON: implement absorbing wall boundary conditions
             # for either 1 or 2 ghost cells
-            raise NotImplementedError("HACKATHON: Implement absorbing wall BCs for DLR solver")
+            # raise NotImplementedError("HACKATHON: Implement absorbing wall BCs for DLR solver")
             if n_ghost_cells == 1:
-                pass
+                # pass
+                left_ghost = K[:,0] @ V_leftgoing_matrix # (r,) at left x=-Lx/2
+                right_ghost = K[:,-1] @ V_rightgoing_matrix # (r,) at right x=Lx/2
+                return jnp.concatenate([
+                    jnp.atleast_2d(left_ghost).T,
+                    K,
+                    jnp.atleast_2d(right_ghost).T,
+                ], axis=1)
             elif n_ghost_cells == 2:
-                pass
+                # For two ghost cells, repeat the logic for both boundaries
+                left_ghost = jnp.tile(jnp.atleast_2d(K[:, 0] @ V_leftgoing_matrix).T, (1, 2))  # (r,2)
+                right_ghost = jnp.tile(jnp.atleast_2d(K[:, -1] @ V_rightgoing_matrix).T, (1, 2)) # (r,2)
+                return jnp.concatenate([
+                    left_ghost,
+                    K,
+                    right_ghost,
+                ], axis=1)
+                # pass
         elif self.boundary_type == 'Periodic':
             if n_ghost_cells == 1:
                 return jnp.concatenate([

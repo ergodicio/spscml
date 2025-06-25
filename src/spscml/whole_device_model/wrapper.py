@@ -64,7 +64,8 @@ def solve_wdm(inputs: dict) -> dict:
                              n=jnp.array(n),
                              T=jnp.array(T),
                              Lz=Lz,
-                             mlflow_parent_run_id=inputs['mlflow_run_id'])
+                            #  mlflow_parent_run_id=inputs['mlflow_run_id']
+                             )
             j = apply_tesseract(tx, tx_inputs)['j']
             Ip = j * inputs['N'] / n
             return Ip
